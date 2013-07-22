@@ -12,6 +12,8 @@
 #include "SDL.h"
 #include "SDL_image.h"
 #include "SDL_ttf.h"
+#include "SDL_audio.h"
+#include "SDL_mixer.h"
 
 #include "list.c"
 // this seems necessary to do this: SDL_Texture->w
@@ -151,6 +153,8 @@ splitTextureTable(SDL_Texture * texture, int w, int h) {
     return spritetable;
 }
 
+void mixaudio(void *unused, Uint8 *stream, int len) { } 
+
 int
 main(int argc, char *argv[])
 {
@@ -161,12 +165,46 @@ main(int argc, char *argv[])
     ListElement *el;
 
     // Initialize SDL2
-    SDL_Init(SDL_INIT_VIDEO);
+    if( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+      printf("Unable to initialize SDL: %s \n", SDL_GetError());
+      quit(1);
+    }
+
+    // Sound INIT
+
+    int count = SDL_GetNumAudioDevices(0);
+    for ( i = 0; i < count; ++i ) {
+        printf("Audio device %d: %s\n", i, SDL_GetAudioDeviceName(i, 0));
+    }
+
+    int audio_rate = 22050;
+    Uint16 audio_format = AUDIO_S16SYS;
+    int audio_channels = 2;
+    int audio_buffers = 4096;
+
+    if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) != 0) {
+	    fprintf(stderr, "Unable to initialize audio: %s\n", Mix_GetError());
+	    exit(1);
+    }
 
     // get desktop information
     if (SDL_GetDesktopDisplayMode(0, &mode) < 0) {
         printf("Could not get display mode: %s\n", SDL_GetError());
         quit(1);
+    }
+
+    // play sound
+    Mix_Music *music; 
+    music = Mix_LoadMUS("heroic.ogg"); 
+    if(music == NULL) { 
+      printf("Unable to load sound file: %s\n", Mix_GetError()); 
+      quit(1); 
+    }
+
+    Mix_PlayMusic(music, -1);
+    if(Mix_PlayMusic(music, -1)) {
+      fprintf(stderr, "Unable to play ogg file: %s\n", Mix_GetError());
+      quit(1);
     }
 
     viewport.x = 0;
@@ -210,8 +248,7 @@ main(int argc, char *argv[])
     SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
     SDL_RenderClear(renderer);
 
-    SDL_Texture *texture;
-    texture = IMG_LoadTexture(renderer, "ground.png");
+    SDL_Texture *texture = IMG_LoadTexture(renderer, "ground.png");
     if (!texture) {
         fprintf(stderr, "Couldn't load %s: %s\n", argv[i], SDL_GetError());
         quit(2);
@@ -219,6 +256,10 @@ main(int argc, char *argv[])
 
     // a table of sprites, ready to use
     SpriteTable * spriteTable = splitTextureTable(texture, 48, 48);
+
+
+    SDL_Texture *texture2 = IMG_LoadTexture(renderer, "character.png");
+    SpriteTable * characterTable = splitTextureTable(texture2, 48, 48);
 
     next_time = SDL_GetTicks() + TICK_INTERVAL;
     
@@ -273,6 +314,18 @@ main(int argc, char *argv[])
             }
         }
 
+        drawSpriteAt(renderer, 
+            characterTable->table[(scroll_x / 10) % characterTable->length], 
+            500, 500);
+
+      
+        drawSpriteAt(renderer, 
+            characterTable->table[(scroll_x / 10) % characterTable->length], 
+            600, 500);
+
+        drawSpriteAt(renderer, 
+            characterTable->table[(scroll_x / 10) % characterTable->length], 
+            700, 500);
 
 
         if(numFrames > 60) {
@@ -310,8 +363,8 @@ main(int argc, char *argv[])
             next_time += TICK_INTERVAL;
         }
 
-        scroll_x = scroll_x + 8;
-        scroll_y = scroll_y + 6;
+        scroll_x = scroll_x + 1;
+        scroll_y = scroll_y + 1;
         ++numFrames;
 
     }

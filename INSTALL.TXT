@@ -1,0 +1,3 @@
+
+apt-get install libvorbis-dev libsmpeg-dev libasound2-dev libpulse-dev
+
