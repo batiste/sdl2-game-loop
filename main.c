@@ -38,10 +38,66 @@ struct Sprite {
 typedef struct Sprite Sprite;
 
 struct SpriteTable {
+    // a table of pointer of sprite
     Sprite ** table;
     int length;
 };
 typedef struct SpriteTable SpriteTable;
+
+struct Animation {
+    SpriteTable * sprites;
+    Uint32 startTick;
+    Uint32 curentTick;
+    int ticksBySprite;
+};
+typedef struct Animation Animation;
+
+
+Sprite * 
+createSprite(SDL_Texture * texture, int w, int h) {
+    Sprite * sp = (Sprite *)malloc(sizeof(Sprite));
+    sp->texture = texture;
+    sp->source.x = 0;
+    sp->source.y = 0;
+    sp->source.w = w;
+    sp->source.h = h;
+
+    sp->destination.x = 0;
+    sp->destination.y = 0;
+    sp->destination.w = w;
+    sp->destination.h = h;
+    return sp;
+}
+
+
+Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int ticksBySprite) {
+
+    Sprite * sprite;
+    int j;
+    int columns = texture->w / sprites_start->w;
+
+    Sprite ** table = (Sprite **) malloc(columns * sizeof(Sprite *));
+
+    for(j=0; j<columns; j++) {
+        sprite = createSprite(texture, sprites_start->w, sprites_start->h);
+        sprite->source.x = j * sprites_start->w + sprites_start->x;
+        sprite->source.y = sprites_start->y;
+        table[j] = sprite;
+    }
+
+    SpriteTable * spritetable = (SpriteTable *) malloc(sizeof(SpriteTable));
+    spritetable->table = table;
+    spritetable->length = columns;
+  
+    Animation * anim = (Animation *) malloc(sizeof(Animation *));
+    anim->sprites = spritetable;
+    anim->ticksBySprite = ticksBySprite;
+
+    anim->startTick = 0;
+    anim->curentTick = 0;
+
+    return anim;
+} 
 
 
 Uint32 
@@ -55,7 +111,7 @@ time_left(void) {
 }
 
 
-/* Call this instead of exit(), so we can clean up SDL: atexit() is evil. */
+// Call this instead of exit(), so we can clean up SDL
 static void
 quit(int rc) {
     if(renderer) {
@@ -87,49 +143,12 @@ drawSpriteAt(SDL_Renderer * renderer, Sprite * sp, int x, int y) {
     SDL_RenderCopy(renderer, sp->texture, &sp->source, &_rect);
 }
 
-Sprite * 
-createSprite(SDL_Texture * texture, int w, int h) {
-    Sprite * sp = (Sprite *)malloc(sizeof(Sprite));
-    sp->texture = texture;
-    sp->source.x = 0;
-    sp->source.y = 0;
-    sp->source.w = w;
-    sp->source.h = h;
 
-    sp->destination.x = 0;
-    sp->destination.y = 0;
-    sp->destination.w = w;
-    sp->destination.h = h;
-    return sp;
-}
-
-
-GenericList *
-splitTexture(SDL_Texture * texture, int w, int h) {
-    Sprite * sprite;
-    int i, j;
-    GenericList * spriteList = createList();
-    int columns = texture->w / w;
-    int lines = texture->h / h;
-   
-    printf("Texture has lines %d and columns %d\n", lines, columns);
-
-    for(i=0; i<lines; i++) {
-        for(j=0; j<columns; j++) {
-            sprite = createSprite(texture, w, h);
-            sprite->source.x = j * w;
-            sprite->source.y = i * h;
-            addToList(spriteList, sprite);
-        }
-    }
-    return spriteList;
-}
 
 SpriteTable *
 splitTextureTable(SDL_Texture * texture, int w, int h) {
     Sprite * sprite;
     int i, j;
-    GenericList * spriteList = createList();
     int columns = texture->w / w;
     int lines = texture->h / h;
 
@@ -318,15 +337,7 @@ main(int argc, char *argv[])
             characterTable->table[(scroll_x / 10) % characterTable->length], 
             500, 500);
 
-      
-        drawSpriteAt(renderer, 
-            characterTable->table[(scroll_x / 10) % characterTable->length], 
-            600, 500);
-
-        drawSpriteAt(renderer, 
-            characterTable->table[(scroll_x / 10) % characterTable->length], 
-            700, 500);
-
+   
 
         if(numFrames > 60) {
             if(text_texture) {
