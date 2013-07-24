@@ -51,7 +51,7 @@ struct Animation {
     SpriteTable * sprites;
     Uint32 startTick;
     Uint32 currentTick;
-    int ticksBySprite;
+    int ticksByFrame;
 };
 typedef struct Animation Animation;
 
@@ -71,7 +71,7 @@ createSprite(SDL_Texture * texture, int w, int h) {
     return sp;
 }
 
-Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int ticksBySprite, int numberSprite) {
+Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int ticksByFrame, int numberSprite) {
 
     Sprite * sprite;
     int j;
@@ -95,7 +95,7 @@ Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int
   
     Animation * anim = (Animation *) malloc(sizeof(Animation));
     anim->sprites = spritetable;
-    anim->ticksBySprite = ticksBySprite;
+    anim->ticksByFrame = ticksByFrame;
 
     anim->startTick = 0;
     anim->currentTick = 0;
@@ -105,7 +105,7 @@ Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int
 
 Sprite * 
 getSpriteFromAnimation(Animation * anim, int frame) {
-    int spriteIndex = (frame / TICK_INTERVAL) % anim->sprites->length;
+    int spriteIndex = (frame / anim->ticksByFrame) % anim->sprites->length;
     return anim->sprites->table[spriteIndex];
 }
 
@@ -203,40 +203,45 @@ SDL_Texture * getTexture(SDL_Renderer * renderer, char *  filename) {
 // Keyboard variables and functions
 
 int wasd[4] = {0, 0, 0, 0};
+int controls[1] = {0};
 
 void handle_keyboard(int key, int down_or_up) {
 
-    // down
-    if(down_or_up) {
-      switch(key)
-      {
-        case SDLK_c:
-          if(draw_mode) { 
-              draw_mode = 0;        
-          } else {
-              draw_mode = 1;
-          }
-          break;
-      }
-    }
-
-    // down and up
+  // down
+  if(down_or_up) {
     switch(key)
     {
-        case SDLK_w:
-          wasd[0] = down_or_up;
-          break;
-        case SDLK_a:
-          wasd[1] = down_or_up;
-          break;
-        case SDLK_s:
-          wasd[2] = down_or_up;
-          break;
-        case SDLK_d:
-          wasd[3] = down_or_up;
-          break;
+      case SDLK_c:
+        if(draw_mode) { 
+          draw_mode = 0;        
+        } else {
+          draw_mode = 1;
+        }
+        break;
+
     }
-    printf("Keyboard event wasd %d, %d, %d, %d\n", wasd[0], wasd[1], wasd[2], wasd[3]);
+  }
+
+  // down and up
+  switch(key)
+  {
+    case SDLK_w:
+      wasd[0] = down_or_up;
+      break;
+    case SDLK_a:
+      wasd[1] = down_or_up;
+      break;
+    case SDLK_s:
+      wasd[2] = down_or_up;
+      break;
+    case SDLK_d:
+      wasd[3] = down_or_up;
+      break;
+    case SDLK_SPACE:
+      controls[0] = down_or_up;
+      break;
+  }
+  printf("Keyboard event wasd %d, %d, %d, %d\n", wasd[0], wasd[1], wasd[2], wasd[3]);
 }
 
 
@@ -278,12 +283,13 @@ main(int argc, char *argv[])
   }
 
   // Play sound
-  Mix_Music * music; 
-  music = Mix_LoadMUS("heroic.ogg"); 
+  Mix_Music * music = Mix_LoadMUS("heroic.ogg"); 
   if(music == NULL) { 
     printf("Unable to load sound file: %s\n", Mix_GetError()); 
     quit(1); 
   }
+
+  Mix_Music * swish = Mix_LoadMUS("swish.ogg");
 
   /*Mix_PlayMusic(music, -1);
   if(Mix_PlayMusic(music, -1)) {
@@ -349,16 +355,20 @@ main(int argc, char *argv[])
   rect.y = 0;
   rect.w = 48;
   rect.h = 48;
-  Animation * stand = createAnimation(characterTexture, &rect, 5, 1);
+  Animation * stand = createAnimation(characterTexture, &rect, 4, 1);
 
-  Animation * goDown = createAnimation(characterTexture, &rect, 5, 4);
+  Animation * goDown = createAnimation(characterTexture, &rect, 4, 4);
   rect.y = 48;
-  Animation * goRight = createAnimation(characterTexture, &rect, 5, 4);
+  Animation * goRight = createAnimation(characterTexture, &rect, 4, 4);
   rect.y = 2 * 48;
-  Animation * goUp = createAnimation(characterTexture, &rect, 5, 4);
+  Animation * goUp = createAnimation(characterTexture, &rect, 4, 4);
   rect.y = 3 * 48;
-  Animation * goLeft = createAnimation(characterTexture, &rect, 5, 4);
+  Animation * goLeft = createAnimation(characterTexture, &rect, 4, 4);
 
+  rect.y = 4 * 48;
+  Animation * swordRight = createAnimation(characterTexture, &rect, 2, 6);
+  rect.y = 5 * 48;
+  Animation * swordLeft = createAnimation(characterTexture, &rect, 2, 6);
 
   // All sorts of variable for the game loop
   done = 0;
@@ -444,6 +454,10 @@ main(int argc, char *argv[])
          scroll_x = scroll_x - speed;
       }
 
+      if(controls[0]) {
+        Mix_PlayMusic(swish, 0);
+      }
+
     }
 
 
@@ -477,6 +491,14 @@ main(int argc, char *argv[])
     }
     if(wasd[3]) {
       characterSprite = getSpriteFromAnimation(goRight, frameNum);
+    }
+
+    if(controls[0]) {
+      characterSprite = getSpriteFromAnimation(swordRight, frameNum);
+    }
+
+    if(controls[0] && wasd[1]) {
+      characterSprite = getSpriteFromAnimation(swordLeft, frameNum);
     }
 
     drawSpriteAt(renderer, characterSprite, viewport.w / 2, viewport.h / 2);
