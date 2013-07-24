@@ -70,11 +70,14 @@ createSprite(SDL_Texture * texture, int w, int h) {
 }
 
 
-Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int ticksBySprite) {
+Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int ticksBySprite, int numberSprite) {
 
     Sprite * sprite;
     int j;
     int columns = (texture->w - sprites_start->x) / sprites_start->w;
+    if(numberSprite != 0) {
+      columns = MIN(numberSprite, columns);
+    }
 
     Sprite ** table = (Sprite **) malloc(columns * sizeof(Sprite *));
 
@@ -104,10 +107,13 @@ startAnimation(Animation * anim) {
 }
 
 Sprite * getSpriteFromAnimation(Animation * anim, int frame) {
-    int spriteIndex = (frame * TICK_INTERVAL) % anim->sprites->length;
+    int spriteIndex = (frame / TICK_INTERVAL) % anim->sprites->length;
     return anim->sprites->table[spriteIndex];
 }
 
+
+// 0: full FPS, 1: cap the framerate
+int draw_mode = 0;
 
 Uint32 
 time_left(void) {
@@ -117,6 +123,12 @@ time_left(void) {
         return 0;
     else
         return next_time - now;
+}
+
+void 
+cap_framerate(void) {
+  SDL_Delay(time_left());
+  next_time += TICK_INTERVAL;
 }
 
 
@@ -181,7 +193,55 @@ splitTextureTable(SDL_Texture * texture, int w, int h) {
     return spritetable;
 }
 
-void mixaudio(void *unused, Uint8 *stream, int len) { } 
+SDL_Texture * getTexture(SDL_Renderer * renderer, char *  filename) {
+  SDL_Texture * texture = IMG_LoadTexture(renderer, filename);
+  if (!texture) {
+      fprintf(stderr, "Couldn't load %s: %s\n", filename, SDL_GetError());
+      quit(1);
+  }
+  return texture;
+}
+
+// Keyboard variables and functions
+
+int wasd[4] = {0, 0, 0, 0};
+
+void handle_keyboard(int key, int down_or_up) {
+
+    // down
+    if(down_or_up) {
+      switch(key)
+      {
+        case SDLK_c:
+          if(draw_mode) { 
+              draw_mode = 0;        
+          } else {
+              draw_mode = 1;
+          }
+          break;
+      }
+    }
+
+    // down and up
+    switch(key)
+    {
+        case SDLK_w:
+          wasd[0] = down_or_up;
+          break;
+        case SDLK_a:
+          wasd[1] = down_or_up;
+          break;
+        case SDLK_s:
+          wasd[2] = down_or_up;
+          break;
+        case SDLK_d:
+          wasd[3] = down_or_up;
+          break;
+    }
+    printf("Keyboard event wasd %d, %d, %d, %d\n", wasd[0], wasd[1], wasd[2], wasd[3]);
+}
+
+
 
 int
 main(int argc, char *argv[])
@@ -199,7 +259,6 @@ main(int argc, char *argv[])
     }
 
     // Sound INIT
-
     int count = SDL_GetNumAudioDevices(0);
     for ( i = 0; i < count; ++i ) {
         printf("Audio device %d: %s\n", i, SDL_GetAudioDeviceName(i, 0));
@@ -215,25 +274,25 @@ main(int argc, char *argv[])
 	    exit(1);
     }
 
-    // get desktop information
+    // Get desktop information
     if (SDL_GetDesktopDisplayMode(0, &mode) < 0) {
         printf("Could not get display mode: %s\n", SDL_GetError());
         quit(1);
     }
 
-    // play sound
-    Mix_Music *music; 
+    // Play sound
+    Mix_Music * music; 
     music = Mix_LoadMUS("heroic.ogg"); 
     if(music == NULL) { 
       printf("Unable to load sound file: %s\n", Mix_GetError()); 
       quit(1); 
     }
 
-    /*Mix_PlayMusic(music, -1);
+    Mix_PlayMusic(music, -1);
     if(Mix_PlayMusic(music, -1)) {
       fprintf(stderr, "Unable to play ogg file: %s\n", Mix_GetError());
       quit(1);
-    }*/
+    }
 
     viewport.x = 0;
     viewport.y = 0;
@@ -262,7 +321,7 @@ main(int argc, char *argv[])
     renderer = SDL_CreateRenderer(window, -1, 0);
     if (renderer < 0) {
         printf("Could not create renderer: %s\n", SDL_GetError());
-        quit(2);
+        quit(1);
     }
 
     if (TTF_Init() == -1) {
@@ -272,31 +331,48 @@ main(int argc, char *argv[])
 
     TTF_Font * font = TTF_OpenFont("calvin.ttf", 25);
 
-    // grey color
+    // Grey color
     SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
     SDL_RenderClear(renderer);
 
-    SDL_Texture *texture = IMG_LoadTexture(renderer, "ground.png");
-    if (!texture) {
+    SDL_Texture *groundTexture = getTexture(renderer, "ground.png");
+    if (!groundTexture) {
         fprintf(stderr, "Couldn't load %s: %s\n", argv[i], SDL_GetError());
-        quit(2);
+        quit(1);
     }
 
-    // a table of sprites, ready to use
-    SpriteTable * spriteTable = splitTextureTable(texture, 48, 48);
-
-
-    SDL_Texture * characterTexture = IMG_LoadTexture(renderer, "character.png");
+    // Table of sprites, ready to use
+    SpriteTable * groundTable = splitTextureTable(groundTexture, 48, 48);
+    SDL_Texture * characterTexture = getTexture(renderer, "character.png");
     SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
 
-    next_time = SDL_GetTicks() + TICK_INTERVAL;
-    
-    // all sorts of variable for the game loop
+    // animations of the character
+    SDL_Rect rect;
+    rect.x = 0;
+    rect.y = 0;
+    rect.w = 48;
+    rect.h = 48;
+    Animation * stand = createAnimation(characterTexture, &rect, 5, 1);
+
+    Animation * goDown = createAnimation(characterTexture, &rect, 5, 4);
+    rect.y = 48;
+    Animation * goRight = createAnimation(characterTexture, &rect, 5, 4);
+    rect.y = 2 * 48;
+    Animation * goUp = createAnimation(characterTexture, &rect, 5, 4);
+    rect.y = 3 * 48;
+    Animation * goLeft = createAnimation(characterTexture, &rect, 5, 4);
+
+
+    // All sorts of variable for the game loop
     done = 0;
+
+    Sprite * characterSprite = getSpriteFromAnimation(goUp, 0);
 
     int scroll_x = 0, scroll_y = 0;
     SDL_Color black;
     black.r = 0; black.g = 0; black.b = 0;
+
+    next_time = SDL_GetTicks() + TICK_INTERVAL;
 
     int lines = viewport.h / 48;
     int columns = viewport.w / 48;
@@ -305,101 +381,125 @@ main(int argc, char *argv[])
     int x, y;
 
     Uint32 startTime = SDL_GetTicks();
-    int numFrames = 0;
-    int draw_mode = 0;
     SDL_Texture * text_texture = NULL;
 
+    // number of the current frame
+    int frameNum = SDL_GetTicks() / TICK_INTERVAL;
+    // amount of rendered frames
+    int renderedFrames = 0;
 
-    SDL_Rect rect;
-    rect.x = 0;
-    rect.y = 0;
-    rect.w = 48;
-    rect.h = 48;
-    Animation * goUp = createAnimation(characterTexture, &rect, 10);
-    rect.y = 48;
-    Animation * goLeft = createAnimation(characterTexture, &rect, 10);
-    rect.y = 2 * 48;
-    Animation * goRight = createAnimation(characterTexture, &rect, 10);
-    rect.y = 3 * 48;
-    Animation * goDown = createAnimation(characterTexture, &rect, 10);
+    // desired frames by second
+    int framesBySecond = 1000 / TICK_INTERVAL;
 
+    // physical frame
+    int physical_frame = 1;
+
+    printf("Desired fps %d\n", framesBySecond);
     printf("Start the game loop\n");
-
-    int physicalframeNum = SDL_GetTicks() / TICK_INTERVAL;
 
     // The game loop
     while (!done) {
 
-        // Check for events
-        while (SDL_PollEvent(&event)) {
-            // printf("Event type: %d\n", event.type);
-            if (event.type == SDL_QUIT || event.type == SDL_WINDOWEVENT_CLOSE) {
-                done = 1;
-            }
-
-            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_c) {
-                if(draw_mode) { 
-                    draw_mode = 0;        
-                } else {
-                    draw_mode = 1;
-                }
-            }
+        // slow down the physical stuff by being sure it's run
+        // only once every TICK_INTERVAL, or physical frame
+        if(SDL_GetTicks() / TICK_INTERVAL > frameNum) {
+          frameNum = SDL_GetTicks() / TICK_INTERVAL;
+          physical_frame = 1;
+        } else {
+          // no physical simulation should happen in this frame
+          physical_frame = 0;
         }
+
+        // ---- Physic and events
+
+        // move the map
+        if(physical_frame) {
+
+          // Check for events
+          while (SDL_PollEvent(&event)) {
+              // printf("Event type: %d\n", event.type);
+              if (event.type == SDL_QUIT || event.type == SDL_WINDOWEVENT_CLOSE) {
+                  done = 1;
+              }
+
+              if (event.type == SDL_KEYDOWN) {
+                handle_keyboard(event.key.keysym.sym, 1);
+              }
+
+              if (event.type == SDL_KEYUP) {
+                handle_keyboard(event.key.keysym.sym, 0);
+              }
+          }
+
+          // apply events to the world
+
+          int speed = 7;
+          if(wasd[0]) {
+            scroll_y = scroll_y + speed;
+          }
+          if(wasd[1]) {
+             scroll_x = scroll_x + speed;
+          }
+          if(wasd[2]) {
+             scroll_y = scroll_y - speed;
+          }
+          if(wasd[3]) {
+             scroll_x = scroll_x - speed;
+          }
+
+        }
+
+
+        // ---- Graphic rendering
 
         // this is not free        
         SDL_RenderClear(renderer);
-
-        // slow down the physical stuff by being sure it's run
-        // only once every TICK_INTERVAL, or physical frame
-        if(SDL_GetTicks() / TICK_INTERVAL > physicalframeNum) {
-          scroll_x = scroll_x + 1;
-          scroll_y = scroll_y + 1;
-          physicalframeNum = SDL_GetTicks() / TICK_INTERVAL;
-        }
   
-        // render
+        // render the ground
         for(i = 0; i < lines + 2; i++) {
-            y = (i * 48 + scroll_y) % y_offset - 48;
+            y = (i * 48 + scroll_y) - 48;
             for(j = 0;j < columns + 2; j++) {
-                x = (j * 48 + scroll_x) % x_offset - 48;
+                x = (j * 48 + scroll_x) - 48;
                 drawSpriteAt(renderer, 
-                    spriteTable->table[(i + j) % 8], 
+                    groundTable->table[(i + j) % 8], 
                     x, y);
             }
         }
 
-        drawSpriteAt(renderer, 
-            getSpriteFromAnimation(goUp, physicalframeNum),
-            500, 500);
+        // render the character
+        characterSprite = getSpriteFromAnimation(stand, frameNum);
 
-        drawSpriteAt(renderer, 
-            getSpriteFromAnimation(goDown, physicalframeNum),
-            550, 500);
+        if(wasd[0]) {
+          characterSprite = getSpriteFromAnimation(goUp, frameNum);
+        }
+        if(wasd[1]) {
+          characterSprite = getSpriteFromAnimation(goLeft, frameNum);
+        }
+        if(wasd[2]) {
+          characterSprite = getSpriteFromAnimation(goDown, frameNum);
+        }
+        if(wasd[3]) {
+          characterSprite = getSpriteFromAnimation(goRight, frameNum);
+        }
 
-        drawSpriteAt(renderer, 
-            getSpriteFromAnimation(goLeft, physicalframeNum),
-            600, 500);
-
-        drawSpriteAt(renderer, 
-            getSpriteFromAnimation(goRight, physicalframeNum),
-            650, 500);
+        drawSpriteAt(renderer, characterSprite, viewport.w / 2, viewport.h / 2);
 
 
-        if(numFrames > 60) {
+        // do this every second on a physical frame
+        if(frameNum % framesBySecond == 0 && physical_frame) {
+
             if(text_texture) {
                 SDL_DestroyTexture(text_texture);   
             }
 
-            float fps = (numFrames / (float)(SDL_GetTicks() - startTime)) * 1000;
-            startTime = SDL_GetTicks();
             char buffer[50];
-            sprintf(buffer, "Press c to cap to 50fps. Current fps: %f", ceil(fps));
+            sprintf(buffer, "Press c to cap to 50fps. Current fps: %d", renderedFrames);
             SDL_Surface * text = TTF_RenderText_Blended(font, buffer, black);
             text_texture = SDL_CreateTextureFromSurface(renderer, text);
 
             // without this the program will take all the memory very fast
             SDL_FreeSurface(text);
-            numFrames = 0;
+            renderedFrames = 0;
         }
 
         if(text_texture) {
@@ -414,14 +514,12 @@ main(int argc, char *argv[])
         // Update the screen
         SDL_RenderPresent(renderer);
 
-        // Cap to ~ 60 fps
+        // Cap to ~ 50 fps
         if(draw_mode == 1) {
-            SDL_Delay(time_left());
-            next_time += TICK_INTERVAL;
+            cap_framerate();
         }
 
-
-        ++numFrames;
+        renderedFrames++;
 
     }
 
