@@ -47,7 +47,7 @@ typedef struct SpriteTable SpriteTable;
 struct Animation {
     SpriteTable * sprites;
     Uint32 startTick;
-    Uint32 curentTick;
+    Uint32 currentTick;
     int ticksBySprite;
 };
 typedef struct Animation Animation;
@@ -74,7 +74,7 @@ Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int
 
     Sprite * sprite;
     int j;
-    int columns = texture->w / sprites_start->w;
+    int columns = (texture->w - sprites_start->x) / sprites_start->w;
 
     Sprite ** table = (Sprite **) malloc(columns * sizeof(Sprite *));
 
@@ -89,15 +89,24 @@ Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int
     spritetable->table = table;
     spritetable->length = columns;
   
-    Animation * anim = (Animation *) malloc(sizeof(Animation *));
+    Animation * anim = (Animation *) malloc(sizeof(Animation));
     anim->sprites = spritetable;
     anim->ticksBySprite = ticksBySprite;
 
     anim->startTick = 0;
-    anim->curentTick = 0;
+    anim->currentTick = 0;
 
     return anim;
-} 
+}
+
+startAnimation(Animation * anim) {
+    anim->startTick = anim->currentTick = SDL_GetTicks();
+}
+
+Sprite * getSpriteFromAnimation(Animation * anim, int frame) {
+    int spriteIndex = (frame * TICK_INTERVAL) % anim->sprites->length;
+    return anim->sprites->table[spriteIndex];
+}
 
 
 Uint32 
@@ -220,11 +229,11 @@ main(int argc, char *argv[])
       quit(1); 
     }
 
-    Mix_PlayMusic(music, -1);
+    /*Mix_PlayMusic(music, -1);
     if(Mix_PlayMusic(music, -1)) {
       fprintf(stderr, "Unable to play ogg file: %s\n", Mix_GetError());
       quit(1);
-    }
+    }*/
 
     viewport.x = 0;
     viewport.y = 0;
@@ -277,8 +286,8 @@ main(int argc, char *argv[])
     SpriteTable * spriteTable = splitTextureTable(texture, 48, 48);
 
 
-    SDL_Texture *texture2 = IMG_LoadTexture(renderer, "character.png");
-    SpriteTable * characterTable = splitTextureTable(texture2, 48, 48);
+    SDL_Texture * characterTexture = IMG_LoadTexture(renderer, "character.png");
+    SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
 
     next_time = SDL_GetTicks() + TICK_INTERVAL;
     
@@ -300,7 +309,24 @@ main(int argc, char *argv[])
     int draw_mode = 0;
     SDL_Texture * text_texture = NULL;
 
+
+    SDL_Rect rect;
+    rect.x = 0;
+    rect.y = 0;
+    rect.w = 48;
+    rect.h = 48;
+    Animation * goUp = createAnimation(characterTexture, &rect, 10);
+    rect.y = 48;
+    Animation * goLeft = createAnimation(characterTexture, &rect, 10);
+    rect.y = 2 * 48;
+    Animation * goRight = createAnimation(characterTexture, &rect, 10);
+    rect.y = 3 * 48;
+    Animation * goDown = createAnimation(characterTexture, &rect, 10);
+
     printf("Start the game loop\n");
+
+    int physicalframeNum = SDL_GetTicks() / TICK_INTERVAL;
+
     // The game loop
     while (!done) {
 
@@ -323,6 +349,15 @@ main(int argc, char *argv[])
         // this is not free        
         SDL_RenderClear(renderer);
 
+        // slow down the physical stuff by being sure it's run
+        // only once every TICK_INTERVAL, or physical frame
+        if(SDL_GetTicks() / TICK_INTERVAL > physicalframeNum) {
+          scroll_x = scroll_x + 1;
+          scroll_y = scroll_y + 1;
+          physicalframeNum = SDL_GetTicks() / TICK_INTERVAL;
+        }
+  
+        // render
         for(i = 0; i < lines + 2; i++) {
             y = (i * 48 + scroll_y) % y_offset - 48;
             for(j = 0;j < columns + 2; j++) {
@@ -334,10 +369,21 @@ main(int argc, char *argv[])
         }
 
         drawSpriteAt(renderer, 
-            characterTable->table[(scroll_x / 10) % characterTable->length], 
+            getSpriteFromAnimation(goUp, physicalframeNum),
             500, 500);
 
-   
+        drawSpriteAt(renderer, 
+            getSpriteFromAnimation(goDown, physicalframeNum),
+            550, 500);
+
+        drawSpriteAt(renderer, 
+            getSpriteFromAnimation(goLeft, physicalframeNum),
+            600, 500);
+
+        drawSpriteAt(renderer, 
+            getSpriteFromAnimation(goRight, physicalframeNum),
+            650, 500);
+
 
         if(numFrames > 60) {
             if(text_texture) {
@@ -374,8 +420,7 @@ main(int argc, char *argv[])
             next_time += TICK_INTERVAL;
         }
 
-        scroll_x = scroll_x + 1;
-        scroll_y = scroll_y + 1;
+
         ++numFrames;
 
     }
