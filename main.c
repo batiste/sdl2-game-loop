@@ -62,39 +62,18 @@ main(int argc, char *argv[])
 
   int i, j, k, done;
   SDL_Event event;
-  SDL_DisplayMode mode;
 
-  // Initialize SDL2
-  if( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
-    printf("Unable to initialize SDL: %s \n", SDL_GetError());
-    quit(1);
-  }
+  init();
+  // Grey color
+  SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
+  SDL_RenderClear(renderer);
 
-  // Sound INIT
-  int count = SDL_GetNumAudioDevices(0);
-  for ( i = 0; i < count; ++i ) {
-      printf("Audio device %d: %s\n", i, SDL_GetAudioDeviceName(i, 0));
-  }
-
-  int audio_rate = 22050;
-  Uint16 audio_format = AUDIO_S16SYS;
-  int audio_channels = 2;
-  int audio_buffers = 4096;
-
-  if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) != 0) {
-    fprintf(stderr, "Unable to initialize audio: %s\n", Mix_GetError());
-    exit(1);
-  }
-
-  // Get desktop information
-  if (SDL_GetDesktopDisplayMode(0, &mode) < 0) {
-      printf("Could not get display mode: %s\n", SDL_GetError());
-      quit(1);
-  }
-
-  // Play sound
+  // Load assets
   Mix_Music * music = getMusic("assets/heroic.ogg"); 
   Mix_Music * swish = getMusic("assets/swish.ogg");
+  TTF_Font * font = getFont("assets/calvin.ttf", 30);
+  SDL_Texture * groundTexture = getTexture("assets/ground.png");
+  SDL_Texture * characterTexture = getTexture("assets/character.png");
 
   /*Mix_PlayMusic(music, -1);
   if(Mix_PlayMusic(music, -1)) {
@@ -102,66 +81,22 @@ main(int argc, char *argv[])
     quit(1);
   }*/
 
-  viewport.x = 0;
-  viewport.y = 0;
-  viewport.w = MAX(mode.w, 800) - 150;
-  viewport.h = MAX(mode.h, 600) - 150;
-
-  printf("Window width : %d\n", viewport.w);
-
-  // Create an application window with the following settings:
-  window = SDL_CreateWindow( 
-      "Game example",                    //    window title
-      SDL_WINDOWPOS_UNDEFINED,           //    initial x destination
-      SDL_WINDOWPOS_UNDEFINED,           //    initial y destination
-      viewport.w,                        //    width, in pixels
-      viewport.h,                        //    height, in pixels
-      SDL_WINDOW_SHOWN                   //    flags
-  );
-
-  // Check that the window was successfully made
-  if(window==NULL){   
-      // In the event that the window could not be made...
-      printf("Could not create window: %s\n", SDL_GetError());
-      quit(1);
-  }
-  
-  renderer = SDL_CreateRenderer(window, -1, 0);
-  if (renderer < 0) {
-      printf("Could not create renderer: %s\n", SDL_GetError());
-      quit(1);
-  }
-
-  if (TTF_Init() == -1) {
-      printf("Unable to initialize SDL_ttf: %s \n", TTF_GetError());
-      quit(1);
-  }
-
-  TTF_Font * font = TTF_OpenFont("assets/calvin.ttf", 25);
-
-  // Grey color
-  SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
-  SDL_RenderClear(renderer);
-
-  SDL_Texture *groundTexture = getTexture("assets/ground.png");
-  if (!groundTexture) {
-      fprintf(stderr, "Couldn't load %s: %s\n", argv[i], SDL_GetError());
-      quit(1);
-  }
-
   // Table of sprites, ready to use
   SpriteTable * groundTable = splitTextureTable(groundTexture, 48, 48);
-  SDL_Texture * characterTexture = getTexture("assets/character.png");
   SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
 
-  // animations of the character
+
+  // Animations of the character
   SDL_Rect rect;
   rect.x = 0;
   rect.y = 0;
   rect.w = 48;
   rect.h = 48;
+
+  // Stand up
   Animation * stand = createAnimation(characterTexture, &rect, 4, 1);
 
+  // Move
   Animation * goDown = createAnimation(characterTexture, &rect, 4, 4);
   rect.y = 48;
   Animation * goRight = createAnimation(characterTexture, &rect, 4, 4);
@@ -170,6 +105,7 @@ main(int argc, char *argv[])
   rect.y = 3 * 48;
   Animation * goLeft = createAnimation(characterTexture, &rect, 4, 4);
 
+  // Sword
   rect.y = 4 * 48;
   Animation * swordRight = createAnimation(characterTexture, &rect, 2, 6);
   rect.y = 5 * 48;
@@ -178,13 +114,14 @@ main(int argc, char *argv[])
   // All sorts of variable for the game loop
   done = 0;
 
+  // the current sprite respresenting the character
   Sprite * characterSprite = getSpriteFromAnimation(goUp, 0);
 
   int scroll_x = 0, scroll_y = 0;
   SDL_Color black;
   black.r = 0; black.g = 0; black.b = 0;
-
-  next_time = SDL_GetTicks() + TICK_INTERVAL;
+  SDL_Color white;
+  black.r = 255; black.g = 255; black.b = 255;
 
   int lines = viewport.h / 48;
   int columns = viewport.w / 48;
@@ -192,8 +129,8 @@ main(int argc, char *argv[])
   int y_offset = (2 + lines) * 48;
   int x, y;
 
-  Uint32 startTime = SDL_GetTicks();
-  SDL_Texture * text_texture = NULL;
+  SDL_Texture * text_texture1 = NULL;
+  SDL_Texture * text_texture2 = NULL;
 
   // number of the current frame
   int frameNum = SDL_GetTicks() / TICK_INTERVAL;
@@ -312,27 +249,34 @@ main(int argc, char *argv[])
     // do this every second on a physical frame
     if(frameNum % framesBySecond == 0 && physical_frame) {
 
-        if(text_texture) {
-            SDL_DestroyTexture(text_texture);   
+        if(text_texture1) {
+            SDL_DestroyTexture(text_texture1);
+            SDL_DestroyTexture(text_texture2);
         }
 
         char buffer[50];
         sprintf(buffer, "Press c to cap to 50fps. Current fps: %d", renderedFrames);
-        SDL_Surface * text = TTF_RenderText_Blended(font, buffer, black);
-        text_texture = SDL_CreateTextureFromSurface(renderer, text);
+        SDL_Surface * text1 = TTF_RenderText_Blended(font, buffer, black);
+        SDL_Surface * text2 = TTF_RenderText_Blended(font, buffer, white);
+        text_texture1 = SDL_CreateTextureFromSurface(renderer, text1);
+        text_texture2 = SDL_CreateTextureFromSurface(renderer, text2);
 
         // without this the program will take all the memory very fast
-        SDL_FreeSurface(text);
+        SDL_FreeSurface(text1);
+        SDL_FreeSurface(text2);
         renderedFrames = 0;
     }
 
-    if(text_texture) {
+    if(text_texture1) {
         SDL_Rect text_rect;
         text_rect.x = 15;
         text_rect.y = 10;
-        text_rect.w = text_texture->w;
-        text_rect.h = text_texture->h;
-        SDL_RenderCopy(renderer, text_texture, NULL, &text_rect);
+        text_rect.w = text_texture1->w;
+        text_rect.h = text_texture1->h;
+        SDL_RenderCopy(renderer, text_texture2, NULL, &text_rect);
+        text_rect.x = 12;
+        text_rect.y = 8;
+        SDL_RenderCopy(renderer, text_texture1, NULL, &text_rect);
     }
 
     // Update the screen

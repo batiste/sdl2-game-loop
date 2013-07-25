@@ -3,13 +3,16 @@
     
   Generic double linked list implementation
  */
+#ifndef LINKED_LIST
+#define LINKED_LIST 1
 
 #include <stdlib.h>
+#include <stdio.h>
 
 void assert(int value) {
     if(value)
         return;
-    printf("assert fail\n");
+    printf("List assert fail, quick exit\n");
     exit(1);
 }
 
@@ -31,13 +34,12 @@ struct GenericList {
 typedef struct GenericList GenericList;
 
 void initList(GenericList *list) {
-    list->length = 0;
-    list->first = NULL;
-    list->last = NULL;
+  list->length = 0;
+  list->first = NULL;
+  list->last = NULL;
 }
 
-GenericList *
-createList() {
+GenericList * createList() {
   GenericList * list = (GenericList *)malloc(sizeof(GenericList));
   initList(list);
   return list;
@@ -165,3 +167,5 @@ displayList(GenericList *list) {
         printf("Item %d address %d\n", i, (int)el->data);
     }
 }
+
+#endif

@@ -23,8 +23,8 @@ typedef struct SpriteTable SpriteTable;
 struct Animation {
     // a table of sprites used for animation
     SpriteTable * sprites;
-    Uint32 startTick;
-    Uint32 currentTick;
+    //Uint32 startTick;
+    //Uint32 currentTick;
     int ticksByFrame;
 };
 typedef struct Animation Animation;
@@ -71,8 +71,8 @@ Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int
     anim->sprites = spritetable;
     anim->ticksByFrame = ticksByFrame;
 
-    anim->startTick = 0;
-    anim->currentTick = 0;
+    //anim->startTick = 0;
+    //anim->currentTick = 0;
 
     return anim;
 }
