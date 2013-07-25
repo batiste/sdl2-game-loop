@@ -283,13 +283,13 @@ main(int argc, char *argv[])
   }
 
   // Play sound
-  Mix_Music * music = Mix_LoadMUS("heroic.ogg"); 
+  Mix_Music * music = Mix_LoadMUS("assets/heroic.ogg"); 
   if(music == NULL) { 
     printf("Unable to load sound file: %s\n", Mix_GetError()); 
     quit(1); 
   }
 
-  Mix_Music * swish = Mix_LoadMUS("swish.ogg");
+  Mix_Music * swish = Mix_LoadMUS("assets/swish.ogg");
 
   /*Mix_PlayMusic(music, -1);
   if(Mix_PlayMusic(music, -1)) {
@@ -332,13 +332,13 @@ main(int argc, char *argv[])
       quit(1);
   }
 
-  TTF_Font * font = TTF_OpenFont("calvin.ttf", 25);
+  TTF_Font * font = TTF_OpenFont("assets/calvin.ttf", 25);
 
   // Grey color
   SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
   SDL_RenderClear(renderer);
 
-  SDL_Texture *groundTexture = getTexture(renderer, "ground.png");
+  SDL_Texture *groundTexture = getTexture(renderer, "assets/ground.png");
   if (!groundTexture) {
       fprintf(stderr, "Couldn't load %s: %s\n", argv[i], SDL_GetError());
       quit(1);
@@ -346,7 +346,7 @@ main(int argc, char *argv[])
 
   // Table of sprites, ready to use
   SpriteTable * groundTable = splitTextureTable(groundTexture, 48, 48);
-  SDL_Texture * characterTexture = getTexture(renderer, "character.png");
+  SDL_Texture * characterTexture = getTexture(renderer, "assets/character.png");
   SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
 
   // animations of the character
