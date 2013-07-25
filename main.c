@@ -4,12 +4,8 @@
   SDL game loop
  */
 
-
-
 #include "common.c"
 #include "sprite.c"
-
-
 
 // Keyboard variables and functions
 
@@ -274,7 +270,7 @@ main(int argc, char *argv[])
         text_rect.w = text_texture1->w;
         text_rect.h = text_texture1->h;
         SDL_RenderCopy(renderer, text_texture2, NULL, &text_rect);
-        text_rect.x = 12;
+        text_rect.x = 13;
         text_rect.y = 8;
         SDL_RenderCopy(renderer, text_texture1, NULL, &text_rect);
     }

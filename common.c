@@ -176,9 +176,7 @@ void init(void) {
 
 }
 
-// TODO: Make lists of both texture and music and free them on quit()
-// Mix_FreeMusic(music);
-
+// Helper fonction to load assets
 
 SDL_Texture * getTexture(char *  filename) {
   SDL_Texture * texture = IMG_LoadTexture(renderer, filename);
