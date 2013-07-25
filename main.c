@@ -1,211 +1,22 @@
 /*
   Copyright (C) 2013 batiste.bieler@gmail.com 
     
-  Based on a SDL example from Sam Lantinga <slouken@libsdl.org>
+  SDL game loop
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
-#include <math.h>
-
-#include "SDL.h"
-#include "SDL_image.h"
-#include "SDL_ttf.h"
-#include "SDL_audio.h"
-#include "SDL_mixer.h"
-
-#include "list.c"
-// this seems necessary to do this: SDL_Texture->w
-#include "SDL2/SDL/src/render/SDL_sysrender.h"
-
-#define MIN(a,b) (((a)<(b))?(a):(b))
-#define MAX(a,b) (((a)>(b))?(a):(b))
-#define TICK_INTERVAL   20
-
-inline int mod(a, b) {
-  int c = a % b;
-  return (c < 0) ? c + b : c;
-}
-
-static Uint32 next_time;
-static SDL_Rect viewport;
-SDL_Window *window;
-SDL_Renderer *renderer;
-
-struct Sprite {
-    SDL_Texture * texture;
-    struct SDL_Rect source;
-    struct SDL_Rect destination;
-};
-typedef struct Sprite Sprite;
-
-struct SpriteTable {
-    // a table of pointer of sprite
-    Sprite ** table;
-    int length;
-};
-typedef struct SpriteTable SpriteTable;
-
-struct Animation {
-    SpriteTable * sprites;
-    Uint32 startTick;
-    Uint32 currentTick;
-    int ticksByFrame;
-};
-typedef struct Animation Animation;
-
-Sprite * 
-createSprite(SDL_Texture * texture, int w, int h) {
-    Sprite * sp = (Sprite *)malloc(sizeof(Sprite));
-    sp->texture = texture;
-    sp->source.x = 0;
-    sp->source.y = 0;
-    sp->source.w = w;
-    sp->source.h = h;
-
-    sp->destination.x = 0;
-    sp->destination.y = 0;
-    sp->destination.w = w;
-    sp->destination.h = h;
-    return sp;
-}
-
-Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int ticksByFrame, int numberSprite) {
-
-    Sprite * sprite;
-    int j;
-    int columns = (texture->w - sprites_start->x) / sprites_start->w;
-    if(numberSprite != 0) {
-      columns = MIN(numberSprite, columns);
-    }
-
-    Sprite ** table = (Sprite **) malloc(columns * sizeof(Sprite *));
-
-    for(j=0; j<columns; j++) {
-        sprite = createSprite(texture, sprites_start->w, sprites_start->h);
-        sprite->source.x = j * sprites_start->w + sprites_start->x;
-        sprite->source.y = sprites_start->y;
-        table[j] = sprite;
-    }
-
-    SpriteTable * spritetable = (SpriteTable *) malloc(sizeof(SpriteTable));
-    spritetable->table = table;
-    spritetable->length = columns;
-  
-    Animation * anim = (Animation *) malloc(sizeof(Animation));
-    anim->sprites = spritetable;
-    anim->ticksByFrame = ticksByFrame;
-
-    anim->startTick = 0;
-    anim->currentTick = 0;
-
-    return anim;
-}
-
-Sprite * 
-getSpriteFromAnimation(Animation * anim, int frame) {
-    int spriteIndex = (frame / anim->ticksByFrame) % anim->sprites->length;
-    return anim->sprites->table[spriteIndex];
-}
 
 
-// 0: full FPS, 1: cap the framerate
-int draw_mode = 0;
-
-Uint32 
-time_left(void) {
-    Uint32 now;
-    now = SDL_GetTicks();
-    if(next_time <= now)
-        return 0;
-    else
-        return next_time - now;
-}
-
-void 
-cap_framerate(void) {
-  SDL_Delay(time_left());
-  next_time += TICK_INTERVAL;
-}
+#include "common.c"
+#include "sprite.c"
 
 
-// Call this instead of exit(), so we can clean up SDL
-static void
-quit(int rc) {
-    if(renderer) {
-        SDL_DestroyRenderer(renderer);
-        printf("%s\n", SDL_GetError());
-    }
-    if(window) {
-        SDL_DestroyWindow(window);
-        printf("%s\n", SDL_GetError());
-    }
-    SDL_Quit();
-    printf("End of the program\n");
-    exit(0);
-}
-
-void
-drawSprite(SDL_Renderer * renderer, Sprite * sp) {
-    SDL_RenderCopy(renderer, sp->texture, &sp->source, &sp->destination);
-}
-
-
-
-void
-drawSpriteAt(SDL_Renderer * renderer, Sprite * sp, int x, int y) {
-  SDL_Rect _rect;
-  _rect.x = x;
-  _rect.y = y;
-  _rect.w = sp->destination.w;
-  _rect.h = sp->destination.h;
-  SDL_RenderCopy(renderer, sp->texture, &sp->source, &_rect);
-}
-
-
-SpriteTable *
-splitTextureTable(SDL_Texture * texture, int w, int h) {
-    Sprite * sprite;
-    int i, j;
-    int columns = texture->w / w;
-    int lines = texture->h / h;
-
-    Sprite ** table = (Sprite **) malloc(columns * lines * sizeof(Sprite *));
-   
-    printf("Texture has lines %d and columns %d\n", lines, columns);
-
-    for(i=0; i<lines; i++) {
-        for(j=0; j<columns; j++) {
-            sprite = createSprite(texture, w, h);
-            sprite->source.x = j * w;
-            sprite->source.y = i * h;
-            table[i * columns + j] = sprite;
-        }
-    }
-
-    SpriteTable * spritetable = (SpriteTable *) malloc(sizeof(SpriteTable));
-    spritetable->table = table;
-    spritetable->length = lines * columns;
-
-    return spritetable;
-}
-
-SDL_Texture * getTexture(SDL_Renderer * renderer, char *  filename) {
-  SDL_Texture * texture = IMG_LoadTexture(renderer, filename);
-  if (!texture) {
-      fprintf(stderr, "Couldn't load %s: %s\n", filename, SDL_GetError());
-      quit(1);
-  }
-  return texture;
-}
 
 // Keyboard variables and functions
 
 int wasd[4] = {0, 0, 0, 0};
 int controls[1] = {0};
 
-void handle_keyboard(int key, int down_or_up) {
+void handleKeyboard(int key, int down_or_up) {
 
   // down
   if(down_or_up) {
@@ -252,7 +63,6 @@ main(int argc, char *argv[])
   int i, j, k, done;
   SDL_Event event;
   SDL_DisplayMode mode;
-  ListElement *el;
 
   // Initialize SDL2
   if( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
@@ -283,13 +93,8 @@ main(int argc, char *argv[])
   }
 
   // Play sound
-  Mix_Music * music = Mix_LoadMUS("assets/heroic.ogg"); 
-  if(music == NULL) { 
-    printf("Unable to load sound file: %s\n", Mix_GetError()); 
-    quit(1); 
-  }
-
-  Mix_Music * swish = Mix_LoadMUS("assets/swish.ogg");
+  Mix_Music * music = getMusic("assets/heroic.ogg"); 
+  Mix_Music * swish = getMusic("assets/swish.ogg");
 
   /*Mix_PlayMusic(music, -1);
   if(Mix_PlayMusic(music, -1)) {
@@ -338,7 +143,7 @@ main(int argc, char *argv[])
   SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
   SDL_RenderClear(renderer);
 
-  SDL_Texture *groundTexture = getTexture(renderer, "assets/ground.png");
+  SDL_Texture *groundTexture = getTexture("assets/ground.png");
   if (!groundTexture) {
       fprintf(stderr, "Couldn't load %s: %s\n", argv[i], SDL_GetError());
       quit(1);
@@ -346,7 +151,7 @@ main(int argc, char *argv[])
 
   // Table of sprites, ready to use
   SpriteTable * groundTable = splitTextureTable(groundTexture, 48, 48);
-  SDL_Texture * characterTexture = getTexture(renderer, "assets/character.png");
+  SDL_Texture * characterTexture = getTexture("assets/character.png");
   SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
 
   // animations of the character
@@ -419,7 +224,7 @@ main(int argc, char *argv[])
 
     // ---- Physic and events
 
-    // move the map
+    // this is a "real" frame where we responde to events and apply physic
     if(physical_frame) {
 
       // Check for events
@@ -430,11 +235,11 @@ main(int argc, char *argv[])
           }
 
           if (event.type == SDL_KEYDOWN) {
-            handle_keyboard(event.key.keysym.sym, 1);
+            handleKeyboard(event.key.keysym.sym, 1);
           }
 
           if (event.type == SDL_KEYUP) {
-            handle_keyboard(event.key.keysym.sym, 0);
+            handleKeyboard(event.key.keysym.sym, 0);
           }
       }
 
@@ -535,7 +340,7 @@ main(int argc, char *argv[])
 
     // Cap to ~ 50 fps
     if(draw_mode == 1) {
-        cap_framerate();
+        capFramerate();
     }
 
     renderedFrames++;
