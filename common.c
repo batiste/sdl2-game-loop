@@ -163,7 +163,7 @@ void init(void) {
       quit(1);
   }
   
-  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED); // SDL_RENDERER_PRESENTVSYNC
+  renderer = SDL_CreateRenderer(window, -1, 0); // SDL_RENDERER_PRESENTVSYNC
   if (renderer < 0) {
       fprintf(stderr, "Could not create renderer: %s\n", SDL_GetError());
       quit(1);
