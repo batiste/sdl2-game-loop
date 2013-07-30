@@ -60,9 +60,7 @@ main(int argc, char *argv[])
   SDL_Event event;
 
   init();
-  // Grey color
-  SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
-  SDL_RenderClear(renderer);
+
 
   // Load assets
   Mix_Music * music = getMusic("assets/heroic.ogg"); 
@@ -70,6 +68,8 @@ main(int argc, char *argv[])
   TTF_Font * font = getFont("assets/calvin.ttf", 30);
   SDL_Texture * groundTexture = getTexture("assets/ground.png");
   SDL_Texture * characterTexture = getTexture("assets/character.png");
+
+  SDL_Texture * splashTexture = getTexture("assets/splash.png");
 
   /*Mix_PlayMusic(music, -1);
   if(Mix_PlayMusic(music, -1)) {
@@ -141,6 +141,35 @@ main(int argc, char *argv[])
 
   printf("Desired fps %d\n", framesBySecond);
   printf("Start the game loop\n");
+
+  // Greenish
+  SDL_SetRenderDrawColor(renderer, 0x06, 0xe0, 0x06, 0xFF);
+  SDL_RenderClear(renderer);
+
+  SDL_Surface * splashScreen = IMG_Load("assets/splash.png");
+
+  SDL_RendererInfo info;
+  SDL_GetRendererInfo(renderer, &info);
+
+  Uint8 alpha = 1;
+  while(alpha < 255) {
+    if(SDL_SetTextureAlphaMod(splashTexture, alpha) != 0) {
+      quit(1);
+    }
+    rect.x = 0;
+    rect.y = 0;
+    rect.w = (viewport.w / 255) * alpha;
+    rect.h = (viewport.h / 255) * alpha;
+
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, splashTexture, NULL, &rect);
+    SDL_RenderPresent(renderer);
+    printf("alpha %d", alpha);
+    SDL_Delay(10);
+    alpha = alpha + 1;
+  }
+
+  SDL_Delay(1000);
 
   // The game loop
   while (!done) {

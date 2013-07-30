@@ -40,7 +40,7 @@ GenericList * musicList;
 GenericList * fontList;
 
 // 0: full FPS, 1: cap the framerate
-int draw_mode = 0;
+int draw_mode = 1;
 static Uint32 next_time;
 
 
@@ -92,11 +92,11 @@ quit(int rc) {
 
     if(renderer) {
         SDL_DestroyRenderer(renderer);
-        printf("%s\n", SDL_GetError());
+        //printf("%s\n", SDL_GetError());
     }
     if(window) {
         SDL_DestroyWindow(window);
-        printf("%s\n", SDL_GetError());
+        //printf("%s\n", SDL_GetError());
     }
     Mix_CloseAudio();
     SDL_Quit();
@@ -168,6 +168,8 @@ void init(void) {
       fprintf(stderr, "Could not create renderer: %s\n", SDL_GetError());
       quit(1);
   }
+
+  SDL_RenderGetViewport(renderer, &viewport);
 
   if (TTF_Init() == -1) {
       fprintf(stderr, "Unable to initialize SDL_ttf: %s \n", TTF_GetError());
