@@ -53,7 +53,12 @@ void handleKeyboard(int key, int down_or_up) {
 
 void showSplashScreen(void) {
 
+  SDL_Rect rect;
   SDL_Texture * splashTexture = getTexture("assets/splash.png");
+  rect.w = splashTexture->w;
+  rect.h = splashTexture->h;
+  rect.x = viewport.w / 2 - splashTexture->w / 2;
+  rect.y = viewport.h / 2 - splashTexture->h / 2;
 
   SDL_RendererInfo info;
   SDL_GetRendererInfo(renderer, &info);
@@ -66,11 +71,11 @@ void showSplashScreen(void) {
     }
 
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, splashTexture, NULL, NULL);
+    SDL_RenderCopy(renderer, splashTexture, NULL, &rect);
     SDL_RenderPresent(renderer);
 
     SDL_Delay(TICK_INTERVAL);
-    alpha = alpha + 5;
+    alpha = alpha + 6;
   }
 }
 
@@ -164,8 +169,9 @@ main(int argc, char *argv[])
   printf("Desired fps %d\n", framesBySecond);
   printf("Start the game loop\n");
 
+  SDL_Delay(100);
   showSplashScreen();
-  SDL_Delay(1000);
+  SDL_Delay(1500);
   SDL_SetRenderDrawColor(renderer, 0x70, 0xc8, 0x40, 0xff);
 
   // The game loop
