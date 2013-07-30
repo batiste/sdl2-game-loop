@@ -77,6 +77,12 @@ Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int
     return anim;
 }
 
+void destroyAnimation(Animation * anim) {
+  free(anim->sprites->table);
+  free(anim->sprites);
+  free(anim);
+}
+
 Sprite * 
 getSpriteFromAnimation(Animation * anim, int frame) {
     int spriteIndex = (frame / anim->ticksByFrame) % anim->sprites->length;
@@ -125,5 +131,9 @@ splitTextureTable(SDL_Texture * texture, int w, int h) {
     return spritetable;
 }
 
+void destroySpriteTable(SpriteTable * table) {
+  free(table->table);
+  free(table);
+}
 
 

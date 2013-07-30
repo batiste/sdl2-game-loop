@@ -23,6 +23,7 @@
 #define TICK_INTERVAL   20
 
 // this seems necessary to do this: SDL_Texture->w
+// use SDL_QueryTexture(img, NULL, NULL, &w, &h); to get the size
 #include "SDL2/SDL/src/render/SDL_sysrender.h"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -30,8 +31,8 @@
 
 
 // globals
-SDL_Window * window;
-SDL_Renderer * renderer;
+SDL_Window * window = NULL;
+SDL_Renderer * renderer = NULL;
 SDL_DisplayMode displaymode;
 SDL_Rect viewport;
 
@@ -72,6 +73,7 @@ quit(int rc) {
     printf("Cleanup\n");
 
     ListElement *el;
+    
     for(el = texturesList->first; el != NULL; el=el->next) {
       printf("Destroy texture\n");
       SDL_DestroyTexture((SDL_Texture *)el->data);
@@ -147,7 +149,7 @@ void init(void) {
   viewport.h = MAX(displaymode.h, 600) - 150;
 
   // Create an application window with the following settings:
-  window = SDL_CreateWindow( 
+  window = SDL_CreateWindow(
       "Game example",                    //    window title
       SDL_WINDOWPOS_UNDEFINED,           //    initial x destination
       SDL_WINDOWPOS_UNDEFINED,           //    initial y destination
@@ -180,9 +182,9 @@ void init(void) {
 
 // Helper fonction to load assets
 
-SDL_Texture * getTexture(char *  filename) {
+SDL_Texture * getTexture(char * filename) {
   SDL_Texture * texture = IMG_LoadTexture(renderer, filename);
-  if (!texture) {
+  if (texture == NULL) {
       fprintf(stderr, "Couldn't load %s: %s\n", filename, SDL_GetError());
       quit(1);
   }

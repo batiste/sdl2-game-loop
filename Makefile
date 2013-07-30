@@ -10,10 +10,10 @@ glbuild:
 	$(CC) $(CFLAGS) -o glapp main.c $(SDLFLAGS)
 
 eglbuild:
-	$(CC) $(CFLAGS) -o eglapp main.c -lGLESv2 $(SDLFLAGS)
+	$(CC) $(CFLAGS) -o glapp main.c -lGLESv2 $(SDLFLAGS)
 
 debug:
-	$(CC) $(CFLAGS) -o debugapp main.c $(SDLFLAGS) -pg
+	$(CC) $(CFLAGS) -o glapp main.c $(SDLFLAGS) -g -O0
 
 clean:
 	rm glapp eglapp debugapp

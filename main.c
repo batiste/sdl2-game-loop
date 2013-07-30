@@ -83,7 +83,7 @@ int
 main(int argc, char *argv[])
 {
 
-  int i, j, k, done;
+  int i, j, done;
   SDL_Event event;
 
   init();
@@ -93,7 +93,7 @@ main(int argc, char *argv[])
   SDL_RenderPresent(renderer);
 
   // Load assets
-  Mix_Music * music = getMusic("assets/heroic.ogg"); 
+  // Mix_Music * music = getMusic("assets/heroic.ogg"); 
   Mix_Music * swish = getMusic("assets/swish.ogg");
   TTF_Font * font = getFont("assets/calvin.ttf", 30);
   SDL_Texture * groundTexture = getTexture("assets/ground.png");
@@ -107,7 +107,7 @@ main(int argc, char *argv[])
 
   // Table of sprites, ready to use
   SpriteTable * groundTable = splitTextureTable(groundTexture, 48, 48);
-  SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
+  // SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
 
   // Animations of the character
   SDL_Rect rect;
@@ -148,8 +148,8 @@ main(int argc, char *argv[])
 
   int lines = viewport.h / 48;
   int columns = viewport.w / 48;
-  int x_offset = (2 + columns) * 48;
-  int y_offset = (2 + lines) * 48;
+  // int x_offset = (2 + columns) * 48;
+  // int y_offset = (2 + lines) * 48;
   int x, y;
 
   SDL_Texture * text_texture1 = NULL;
@@ -321,8 +321,17 @@ main(int argc, char *argv[])
 
   // cleanup
   // TODO: free the structure that need to be
-  
-  
+
+  // seems to create more problems with valgrind
+  destroyAnimation(stand);
+  destroyAnimation(goUp);
+  destroyAnimation(goDown);
+  destroyAnimation(goLeft);
+  destroyAnimation(goRight);  
+  destroyAnimation(swordRight);
+  destroyAnimation(swordLeft);
+  destroySpriteTable(groundTable);
+
   quit(0);
 
   // to prevent compiler warning
