@@ -50,21 +50,49 @@ void handleKeyboard(int key, int down_or_up) {
   printf("Keyboard event wasd %d, %d, %d, %d\n", wasd[0], wasd[1], wasd[2], wasd[3]);
 }
 
+void showSplashScreen(void) {
+
+  SDL_Rect rect;
+  SDL_Texture * splashTexture = getTexture("assets/splash.png");
+  rect.w = splashTexture->w;
+  rect.h = splashTexture->h;
+  rect.x = viewport.w / 2 - splashTexture->w / 2;
+  rect.y = viewport.h / 2 - splashTexture->h / 2;
+
+  SDL_RendererInfo info;
+  SDL_GetRendererInfo(renderer, &info);
+
+  SDL_Delay(100);
+  int alpha = 1;
+  while(alpha < 255) {
+    if(SDL_SetTextureAlphaMod(splashTexture, alpha) != 0) {
+      quit(1);
+    }
+
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, splashTexture, NULL, &rect);
+    SDL_RenderPresent(renderer);
+
+    SDL_Delay(TICK_INTERVAL);
+    alpha = alpha + 6;
+  }
+}
 
 int
 main(int argc, char *argv[])
 {
 
-  int i, j, k, done;
+  int i, j, done;
   SDL_Event event;
 
   init();
-  // Grey color
-  SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
+
+  SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
   SDL_RenderClear(renderer);
+  SDL_RenderPresent(renderer);
 
   // Load assets
-  Mix_Music * music = getMusic("assets/heroic.ogg"); 
+  // Mix_Music * music = getMusic("assets/heroic.ogg"); 
   Mix_Music * swish = getMusic("assets/swish.ogg");
   TTF_Font * font = getFont("assets/calvin.ttf", 30);
   SDL_Texture * groundTexture = getTexture("assets/ground.png");
@@ -78,8 +106,7 @@ main(int argc, char *argv[])
 
   // Table of sprites, ready to use
   SpriteTable * groundTable = splitTextureTable(groundTexture, 48, 48);
-  SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
-
+  // SpriteTable * characterTable = splitTextureTable(characterTexture, 48, 48);
 
   // Animations of the character
   SDL_Rect rect;
@@ -120,8 +147,8 @@ main(int argc, char *argv[])
 
   int lines = viewport.h / 48;
   int columns = viewport.w / 48;
-  int x_offset = (2 + columns) * 48;
-  int y_offset = (2 + lines) * 48;
+  // int x_offset = (2 + columns) * 48;
+  // int y_offset = (2 + lines) * 48;
   int x, y;
 
   SDL_Texture * text_texture1 = NULL;
@@ -140,6 +167,11 @@ main(int argc, char *argv[])
 
   printf("Desired fps %d\n", framesBySecond);
   printf("Start the game loop\n");
+
+  SDL_Delay(100);
+  showSplashScreen();
+  SDL_Delay(1500);
+  SDL_SetRenderDrawColor(renderer, 0x70, 0xc8, 0x40, 0xff);
 
   // The game loop
   while (!done) {
@@ -288,8 +320,17 @@ main(int argc, char *argv[])
 
   // cleanup
   // TODO: free the structure that need to be
-  
-  
+
+  // seems to create more problems with valgrind
+  destroyAnimation(stand);
+  destroyAnimation(goUp);
+  destroyAnimation(goDown);
+  destroyAnimation(goLeft);
+  destroyAnimation(goRight);  
+  destroyAnimation(swordRight);
+  destroyAnimation(swordLeft);
+  destroySpriteTable(groundTable);
+
   quit(0);
 
   // to prevent compiler warning
