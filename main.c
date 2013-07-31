@@ -19,13 +19,12 @@ void handleKeyboard(int key, int down_or_up) {
     switch(key)
     {
       case SDLK_c:
-        if(draw_mode) { 
+        if(draw_mode == 1) { 
           draw_mode = 0;        
         } else {
           draw_mode = 1;
         }
         break;
-
     }
   }
 

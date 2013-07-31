@@ -40,7 +40,7 @@ GenericList * musicList;
 GenericList * fontList;
 
 // 0: full FPS, 1: cap the framerate
-int draw_mode = 0;
+int draw_mode = 1;
 static Uint32 next_time;
 
 
