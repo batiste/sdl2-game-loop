@@ -40,6 +40,9 @@ GenericList * texturesList;
 GenericList * musicList;
 GenericList * fontList;
 
+SDL_Color black;
+SDL_Color white;
+
 // 0: full FPS, 1: cap the framerate
 int draw_mode = 1;
 static Uint32 next_time;
@@ -113,6 +116,8 @@ void init(void) {
   texturesList = createList();
   musicList = createList();
   fontList = createList();
+  black.r = 0; black.g = 0; black.b = 0;
+  white.r = 255; white.g = 255; white.b = 255;
 
  // Initialize SDL2
   if( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
@@ -179,6 +184,61 @@ void init(void) {
   }
 
 }
+
+
+SDL_Texture * renderFontToTexture(TTF_Font * font, char * text) {
+    // Create a text texture with a shadow effect
+    SDL_Surface * text1 = TTF_RenderText_Blended(font, text, black);
+    SDL_Surface * text2 = TTF_RenderText_Blended(font, text, white);
+
+    /* Create a 32-bit surface with the bytes of each pixel in R,G,B,A order,
+       as expected by OpenGL for textures */
+    SDL_Surface *surface;
+    Uint32 rmask, gmask, bmask, amask;
+
+    /* SDL interprets each pixel as a 32-bit number, so our masks must depend
+       on the endianness (byte order) of the machine */
+    #if SDL_BYTEORDER == SDL_BIG_ENDIAN
+        rmask = 0xff000000;
+        gmask = 0x00ff0000;
+        bmask = 0x0000ff00;
+        amask = 0x000000ff;
+    #else
+        rmask = 0x000000ff;
+        gmask = 0x0000ff00;
+        bmask = 0x00ff0000;
+        amask = 0xff000000;
+    #endif
+
+    // with amask = 0, I see the image, with amask = 0xff000000, I see nothing
+    surface = SDL_CreateRGBSurface(0, text1->w + 8, text1->h + 8, 32,
+                                   rmask, gmask, bmask, amask);
+
+    SDL_ConvertSurface(surface, text1->format, 0);
+    //SDL_PixelFormat *fmt;
+    //surface->format;
+
+    SDL_Rect text_rect;
+    text_rect.x = 4;
+    text_rect.y = 4;
+    text_rect.w = text2->w;
+    text_rect.h = text2->h;
+
+    SDL_BlitSurface(text2, NULL, surface, &text_rect);
+    text_rect.x = 2;
+    text_rect.y = 2;
+    SDL_BlitSurface(text1, NULL, surface, &text_rect);
+
+    SDL_Texture * texture = SDL_CreateTextureFromSurface(renderer, surface);
+
+    // This important to free the surface to avoid leaks
+    SDL_FreeSurface(text1);
+    SDL_FreeSurface(text2);
+    SDL_FreeSurface(surface);
+    return texture;
+}
+
+
 
 // Helper fonction to load assets
 

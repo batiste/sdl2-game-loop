@@ -142,10 +142,7 @@ main(int argc, char *argv[])
   Sprite * characterSprite = getSpriteFromAnimation(goUp, 0);
 
   int scroll_x = 0, scroll_y = 0;
-  SDL_Color black;
-  black.r = 0; black.g = 0; black.b = 0;
-  SDL_Color white;
-  black.r = 255; black.g = 255; black.b = 255;
+
 
   int lines = viewport.h / 48;
   int columns = viewport.w / 48;
@@ -154,7 +151,6 @@ main(int argc, char *argv[])
   int x, y;
 
   SDL_Texture * text_texture1 = NULL;
-  SDL_Texture * text_texture2 = NULL;
 
   // number of the current frame
   int frameNum = SDL_GetTicks() / TICK_INTERVAL;
@@ -280,19 +276,17 @@ main(int argc, char *argv[])
 
         if(text_texture1) {
             SDL_DestroyTexture(text_texture1);
-            SDL_DestroyTexture(text_texture2);
         }
 
         char buffer[50];
-        sprintf(buffer, "Press c to cap to 50fps. Current fps: %d", renderedFrames);
-        SDL_Surface * text1 = TTF_RenderText_Blended(font, buffer, black);
-        SDL_Surface * text2 = TTF_RenderText_Blended(font, buffer, white);
-        text_texture1 = SDL_CreateTextureFromSurface(renderer, text1);
-        text_texture2 = SDL_CreateTextureFromSurface(renderer, text2);
+        if(draw_mode == 1) {
+          sprintf(buffer, "Press c to maximize FPS. Current FPS: %d", renderedFrames);
+        } else {
+          sprintf(buffer, "Press c to cap to 50FPS. Current FPS: %d", renderedFrames);
+        }
 
-        // without this the program will take all the memory very fast
-        SDL_FreeSurface(text1);
-        SDL_FreeSurface(text2);
+        text_texture1 = renderFontToTexture(font, buffer);
+
         renderedFrames = 0;
     }
 
@@ -300,10 +294,7 @@ main(int argc, char *argv[])
         SDL_Rect text_rect;
         text_rect.x = 15;
         text_rect.y = 10;
-        SDL_QueryTexture(text_texture2, NULL, NULL, &text_rect.w, &text_rect.h);
-        SDL_RenderCopy(renderer, text_texture2, NULL, &text_rect);
-        text_rect.x = 13;
-        text_rect.y = 8;
+        SDL_QueryTexture(text_texture1, NULL, NULL, &text_rect.w, &text_rect.h);
         SDL_RenderCopy(renderer, text_texture1, NULL, &text_rect);
     }
 
@@ -331,6 +322,7 @@ main(int argc, char *argv[])
   destroyAnimation(swordRight);
   destroyAnimation(swordLeft);
   destroySpriteTable(groundTable);
+  SDL_DestroyTexture(text_texture1);
 
   quit(0);
 
