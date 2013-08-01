@@ -188,8 +188,8 @@ void init(void) {
 
 SDL_Texture * renderFontToTexture(TTF_Font * font, char * text) {
     // Create a text texture with a shadow effect
-    SDL_Surface * text1 = TTF_RenderText_Blended(font, text, black);
-    SDL_Surface * text2 = TTF_RenderText_Blended(font, text, white);
+    SDL_Surface * textb = TTF_RenderText_Solid(font, text, black);
+    SDL_Surface * textw = TTF_RenderText_Solid(font, text, white);
 
     /* Create a 32-bit surface with the bytes of each pixel in R,G,B,A order,
        as expected by OpenGL for textures */
@@ -211,29 +211,25 @@ SDL_Texture * renderFontToTexture(TTF_Font * font, char * text) {
     #endif
 
     // with amask = 0, I see the image, with amask = 0xff000000, I see nothing
-    surface = SDL_CreateRGBSurface(0, text1->w + 8, text1->h + 8, 32,
+    surface = SDL_CreateRGBSurface(0, textw->w + 8, textw->h + 8, 32,
                                    rmask, gmask, bmask, amask);
 
-    SDL_ConvertSurface(surface, text1->format, 0);
-    //SDL_PixelFormat *fmt;
-    //surface->format;
-
     SDL_Rect text_rect;
-    text_rect.x = 4;
-    text_rect.y = 4;
-    text_rect.w = text2->w;
-    text_rect.h = text2->h;
-
-    SDL_BlitSurface(text2, NULL, surface, &text_rect);
     text_rect.x = 2;
-    text_rect.y = 2;
-    SDL_BlitSurface(text1, NULL, surface, &text_rect);
+    text_rect.y = 1;
+    text_rect.w = textw->w;
+    text_rect.h = textw->h;
+
+    SDL_BlitSurface(textw, NULL, surface, &text_rect);
+    text_rect.x = 0;
+    text_rect.y = 0;
+    SDL_BlitSurface(textb, NULL, surface, &text_rect);
 
     SDL_Texture * texture = SDL_CreateTextureFromSurface(renderer, surface);
 
     // This important to free the surface to avoid leaks
-    SDL_FreeSurface(text1);
-    SDL_FreeSurface(text2);
+    SDL_FreeSurface(textw);
+    SDL_FreeSurface(textb);
     SDL_FreeSurface(surface);
     return texture;
 }
