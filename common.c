@@ -24,7 +24,7 @@
 
 // this seems necessary to do this: SDL_Texture->w
 // use SDL_QueryTexture(img, NULL, NULL, &w, &h); to get the size
-#include "SDL2/SDL/src/render/SDL_sysrender.h"
+// #include "SDL2/SDL/src/render/SDL_sysrender.h"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -203,7 +203,7 @@ Mix_Music * getMusic(char *  filename) {
 }
 
 TTF_Font * getFont(char *  filename, int size) {
-  TTF_Font * font = TTF_OpenFont("assets/calvin.ttf", size);
+  TTF_Font * font = TTF_OpenFont(filename, size);
   if(font == NULL) {
     fprintf(stderr, "Unable to load ttf file: %s\n", SDL_GetError()); 
     quit(1); 

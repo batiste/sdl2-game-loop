@@ -48,8 +48,9 @@ createSprite(SDL_Texture * texture, int w, int h) {
 Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int ticksByFrame, int numberSprite) {
 
     Sprite * sprite;
-    int j;
-    int columns = (texture->w - sprites_start->x) / sprites_start->w;
+    int j, w, h;
+    SDL_QueryTexture(texture, NULL, NULL, &w, &h);
+    int columns = (w - sprites_start->x) / sprites_start->w;
     if(numberSprite != 0) {
       columns = MIN(numberSprite, columns);
     }
@@ -107,9 +108,10 @@ drawSpriteAt(SDL_Renderer * renderer, Sprite * sp, int x, int y) {
 SpriteTable *
 splitTextureTable(SDL_Texture * texture, int w, int h) {
     Sprite * sprite;
-    int i, j;
-    int columns = texture->w / w;
-    int lines = texture->h / h;
+    int i, j, tex_w, tex_h;
+    SDL_QueryTexture(texture, NULL, NULL, &tex_w, &tex_h);
+    int columns = tex_w / w;
+    int lines = tex_h / h;
 
     Sprite ** table = (Sprite **) malloc(columns * lines * sizeof(Sprite *));
    

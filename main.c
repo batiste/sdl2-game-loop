@@ -54,10 +54,12 @@ void showSplashScreen(void) {
 
   SDL_Rect rect;
   SDL_Texture * splashTexture = getTexture("assets/splash.png");
-  rect.w = splashTexture->w;
-  rect.h = splashTexture->h;
-  rect.x = viewport.w / 2 - splashTexture->w / 2;
-  rect.y = viewport.h / 2 - splashTexture->h / 2;
+  int w, h;
+  SDL_QueryTexture(splashTexture, NULL, NULL, &w, &h);
+  rect.w = w;
+  rect.h = h;
+  rect.x = viewport.w / 2 - w / 2;
+  rect.y = viewport.h / 2 - h / 2;
 
   SDL_RendererInfo info;
   SDL_GetRendererInfo(renderer, &info);
@@ -94,7 +96,7 @@ main(int argc, char *argv[])
   // Load assets
   // Mix_Music * music = getMusic("assets/heroic.ogg"); 
   Mix_Music * swish = getMusic("assets/swish.ogg");
-  TTF_Font * font = getFont("assets/calvin.ttf", 30);
+  TTF_Font * font = getFont("assets/yoster.ttf", 26);
   SDL_Texture * groundTexture = getTexture("assets/ground.png");
   SDL_Texture * characterTexture = getTexture("assets/character.png");
 
@@ -223,10 +225,6 @@ main(int argc, char *argv[])
          scroll_x = scroll_x - speed;
       }
 
-      if(controls[0]) {
-        Mix_PlayMusic(swish, 0);
-      }
-
     }
 
 
@@ -267,6 +265,10 @@ main(int argc, char *argv[])
     }
 
     if(controls[0] && wasd[1]) {
+      if(controls[0]) {
+        Mix_PlayMusic(swish, 0);
+      }
+
       characterSprite = getSpriteFromAnimation(swordLeft, frameNum);
     }
 
@@ -298,8 +300,7 @@ main(int argc, char *argv[])
         SDL_Rect text_rect;
         text_rect.x = 15;
         text_rect.y = 10;
-        text_rect.w = text_texture1->w;
-        text_rect.h = text_texture1->h;
+        SDL_QueryTexture(text_texture2, NULL, NULL, &text_rect.w, &text_rect.h);
         SDL_RenderCopy(renderer, text_texture2, NULL, &text_rect);
         text_rect.x = 13;
         text_rect.y = 8;
