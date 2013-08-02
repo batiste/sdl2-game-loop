@@ -1,4 +1,4 @@
-Before compiling SDL2 it is necessary to have the necessary libraries and headers installed:
+Before compiling SDL2 it is necessary/better to have some dev libraries and headers installed:
 
 $ apt-get install libvorbis-dev libsmpeg-dev libasound2-dev libpulse-dev libpng-dev
 
@@ -6,6 +6,9 @@ Then
 
 $ cd SDL2
 $ ./updatesdl.sh
+$ cd ..
+$ cd mxml
+$ ./update.sh
 
 To test main.c
 

@@ -6,6 +6,7 @@
 
 #include "common.c"
 #include "sprite.c"
+#include "tmx.c"
 
 // Keyboard variables and functions
 
@@ -99,6 +100,15 @@ main(int argc, char *argv[])
   TTF_Font * font = getFont("assets/yoster.ttf", 26);
   SDL_Texture * groundTexture = getTexture("assets/ground.png");
   SDL_Texture * characterTexture = getTexture("assets/character.png");
+
+  TmxMap * map = TMX_LoadFile("assets/map1.tmx");
+  printf("orientation %s \n", map->orientation);
+  printf("numLayers %d\n", map->numLayers);
+  printf("Layer 1 height %d\n", map->layers[0].height);
+  printf("Layer 1 %s\n", map->layers[0].name);
+  printf("Layer 2 %s\n", map->layers[1].name);
+
+  quit(1);
 
   /*Mix_PlayMusic(music, -1);
   if(Mix_PlayMusic(music, -1)) {
