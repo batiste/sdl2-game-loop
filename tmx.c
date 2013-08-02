@@ -22,9 +22,9 @@ struct TmxTileset {
   int tileheight;
   char name[50];
   int firstgid;
-  // 1 ortho
-  int orientation;
-
+  char source[50];
+  int width;
+  int height;
 };
 typedef struct TmxTileset TmxTileset;
 
@@ -150,7 +150,7 @@ TmxMap * TMX_LoadFile(char * filename) {
                          NULL, NULL,
                          MXML_DESCEND);
 
-  int i = 0, j = 0, k = 0;
+  int i = 0, j = 0, k = 0, l = 0;
   // Second pass we fill the tilesets, layers and object groups
   while(node != NULL) {
     name = mxmlGetElement(node);
@@ -161,6 +161,13 @@ TmxMap * TMX_LoadFile(char * filename) {
         set->tilewidth = atoi(mxmlElementGetAttr(node, "tilewidth"));
         set->tileheight = atoi(mxmlElementGetAttr(node, "tileheight"));
         strncpy(set->name, mxmlElementGetAttr(node, "name"), 50);
+        mxml_node_t * image = mxmlFindElement(node, node, "image",
+                               NULL, NULL,
+                               MXML_DESCEND);
+        set->width = atoi(mxmlElementGetAttr(image, "width"));
+        set->height = atoi(mxmlElementGetAttr(image, "height"));
+        strncpy(set->source, mxmlElementGetAttr(image, "source"), 50);
+
         i++;
       }
 
@@ -169,6 +176,26 @@ TmxMap * TMX_LoadFile(char * filename) {
         layer->width = atoi(mxmlElementGetAttr(node, "width"));
         layer->height = atoi(mxmlElementGetAttr(node, "height"));
         strncpy(layer->name, mxmlElementGetAttr(node, "name"), 50);
+        layer->numTiles = layer->width * layer->height;
+      
+        layer->tiles = malloc(layer->numTiles * sizeof(int));
+
+        // filling up all the tiles
+        mxml_node_t * tile = mxmlFindElement(node, node, "tile",
+                               NULL, NULL,
+                               MXML_DESCEND);
+        mxml_node_t * data = mxmlFindElement(node, node, "data",
+                               NULL, NULL,
+                               MXML_DESCEND);
+        l = 0;
+        while(tile != NULL) {
+          if(mxmlGetElement(tile)) {
+            layer->tiles[l] = atoi(mxmlElementGetAttr(tile, "gid"));
+            l++;
+          }
+          tile = mxmlWalkNext(tile, data, MXML_NO_DESCEND);
+        }
+
         j++;
 
       }
@@ -177,12 +204,49 @@ TmxMap * TMX_LoadFile(char * filename) {
         group->width = atoi(mxmlElementGetAttr(node, "width"));
         group->height = atoi(mxmlElementGetAttr(node, "height"));
         strncpy(group->name, mxmlElementGetAttr(node, "name"), 50);
+
+        // count the objects
+        mxml_node_t * object = mxmlFindElement(node, node, "object",
+                               NULL, NULL,
+                               MXML_DESCEND);
+        l = 0;
+        while(object != NULL) {
+          if(mxmlGetElement(object)) {
+            l++;
+          }
+          object = mxmlWalkNext(object, node, MXML_NO_DESCEND);
+        }
+        group->objects = malloc(l * sizeof(TmxObject));
+        group->numObjects = l;
+        // fillup the objects
+        object = mxmlFindElement(node, node, "object",
+                               NULL, NULL,
+                               MXML_DESCEND);
+        l = 0;
+        while(object != NULL) {
+          if(mxmlGetElement(object)) {
+            TmxObject * tobject = &group->objects[l];
+            tobject->width = atoi(mxmlElementGetAttr(object, "width"));
+            tobject->height = atoi(mxmlElementGetAttr(object, "height"));
+            tobject->x = atoi(mxmlElementGetAttr(object, "x"));
+            tobject->y = atoi(mxmlElementGetAttr(object, "y"));
+            l++;
+          }
+          object = mxmlWalkNext(object, node, MXML_NO_DESCEND);
+        }
+
+
         k++;
       }
     }
     node = mxmlWalkNext(node, mapNode,
                         MXML_NO_DESCEND);
   }
+
+
+  // create the objects
+
+  // fill up the layer
 
   mxmlDelete(tree);
   return map;

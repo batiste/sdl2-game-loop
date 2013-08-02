@@ -108,7 +108,7 @@ main(int argc, char *argv[])
   printf("Layer 1 %s\n", map->layers[0].name);
   printf("Layer 2 %s\n", map->layers[1].name);
 
-  quit(1);
+  //quit(1);
 
   /*Mix_PlayMusic(music, -1);
   if(Mix_PlayMusic(music, -1)) {

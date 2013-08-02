@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.0" orientation="orthogonal" width="10" height="10" tilewidth="48" tileheight="48">
  <tileset firstgid="1" name="Ground" tilewidth="48" tileheight="48">
+  <properties>
+   <property name="test" value="2"/>
+  </properties>
   <image source="ground.png" width="192" height="96"/>
  </tileset>
  <layer name="ground" width="10" height="10">
