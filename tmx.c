@@ -170,8 +170,8 @@ TmxMap * TMX_LoadFile(char * filename) {
         mxml_node_t * image = mxmlFindElement(node, node, "image",
                                NULL, NULL,
                                MXML_DESCEND);
-        set->width = atoi(mxmlElementGetAttr(image, "width"));
-        set->height = atoi(mxmlElementGetAttr(image, "height"));
+        set->width = (atoi(mxmlElementGetAttr(image, "width")) / set->tilewidth) * set->tilewidth;
+        set->height = (atoi(mxmlElementGetAttr(image, "height")) / set->tileheight) * set->tileheight;
         strncpy(set->source, mxmlElementGetAttr(image, "source"), 50);
 
         set->numTiles = (set->width / set->tilewidth) * (set->height / set->tileheight);
