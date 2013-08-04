@@ -150,8 +150,8 @@ void init(void) {
 
   viewport.x = 0;
   viewport.y = 0;
-  viewport.w = MAX(displaymode.w, 800) - 150;
-  viewport.h = MAX(displaymode.h, 600) - 150;
+  viewport.w = MIN(displaymode.w, 800);
+  viewport.h = MIN(displaymode.h, 600);
 
   // Create an application window with the following settings:
   window = SDL_CreateWindow(

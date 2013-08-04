@@ -94,8 +94,6 @@ main(int argc, char *argv[])
   SDL_RenderClear(renderer);
   SDL_RenderPresent(renderer);
 
-  printf("n1 %d\n", 9 / 10);
-
   // Load assets
   // Mix_Music * music = getMusic("assets/heroic.ogg"); 
   Mix_Music * swish = getMusic("assets/swish.ogg");
@@ -173,13 +171,6 @@ main(int argc, char *argv[])
 
   int scroll_x = 0, scroll_y = 0;
 
-
-  int lines = viewport.h / 48;
-  int columns = viewport.w / 48;
-  // int x_offset = (2 + columns) * 48;
-  // int y_offset = (2 + lines) * 48;
-  int x, y;
-
   SDL_Texture * text_texture1 = NULL;
 
   // number of the current frame
@@ -198,7 +189,7 @@ main(int argc, char *argv[])
 
   SDL_Delay(100);
   showSplashScreen();
-  SDL_Delay(1500);
+  SDL_Delay(1000);
   SDL_SetRenderDrawColor(renderer, 0x70, 0xc8, 0x40, 0xff);
 
   // The game loop
@@ -259,26 +250,14 @@ main(int argc, char *argv[])
     // this is not free        
     SDL_RenderClear(renderer);
 
-    // render the ground
-    /*for(i = 0; i < lines + 2; i++) {
-        y = mod(i * 48 + scroll_y, viewport.h + 48) - 48;
-        for(j = 0;j < columns + 2; j++) {
-            x = mod(j * 48 + scroll_x, viewport.w + 48) - 48;
-            drawSpriteAt(renderer, 
-                groundTable->table[abs(i + j) % 8], 
-                x, y);
-        }
-    }*/
-
     for(i=0; i<map->numLayers; i++) {
       TmxLayer * layer = &map->layers[i];
       for(j=0; j<layer->numTiles; j++) {
           int gid = layer->tiles[j];
           if(gid > 0) {
-            int x = (j % map->width) * map->tilewidth;
-            int y = (j / map->width) * map->tileheight;
-            printf("%d %d\n", x, y);
-            drawSpriteAt(renderer, &sprites[gid], x + scroll_x, y + scroll_y);
+            int x = (j % map->width) * map->tilewidth + scroll_x;
+            int y = (j / map->width) * map->tileheight + scroll_y;
+            drawSpriteAt(renderer, &sprites[gid], x, y);
           }
       }
     }
@@ -366,6 +345,8 @@ main(int argc, char *argv[])
   destroyAnimation(swordLeft);
   destroySpriteTable(groundTable);
   SDL_DestroyTexture(text_texture1);
+  free(sprites);
+  free(texturestable);
 
   quit(0);
 
