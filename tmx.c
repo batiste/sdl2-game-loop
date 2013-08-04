@@ -25,6 +25,9 @@ struct TmxTileset {
   char source[50];
   int width;
   int height;
+  int numTiles;
+  int spacing;
+  int margin;
 };
 typedef struct TmxTileset TmxTileset;
 
@@ -59,7 +62,7 @@ struct TmxMap {
   int height;
   int tilewidth;
   int tileheight;
-  // 1 ortho
+  // "orthogonal", "isometric" and "staggered"
   char orientation[15];
 
   TmxTileset * tilesets;
@@ -70,6 +73,8 @@ struct TmxMap {
 
   TmxLayer * layers;
   int numLayers;
+
+  int numTiles;
 };
 typedef struct TmxMap TmxMap;
 
@@ -110,6 +115,7 @@ TmxMap * TMX_LoadFile(char * filename) {
   map->tilesets = NULL;
   map->objectGroups = NULL;
   map->layers = NULL;
+  map->numTiles = 0;
 
   node = mxmlFindElement(tree, tree, "tileset",
                          NULL, NULL,
@@ -168,6 +174,8 @@ TmxMap * TMX_LoadFile(char * filename) {
         set->height = atoi(mxmlElementGetAttr(image, "height"));
         strncpy(set->source, mxmlElementGetAttr(image, "source"), 50);
 
+        set->numTiles = (set->width / set->tilewidth) * (set->height / set->tileheight);
+
         i++;
       }
 
@@ -177,8 +185,11 @@ TmxMap * TMX_LoadFile(char * filename) {
         layer->height = atoi(mxmlElementGetAttr(node, "height"));
         strncpy(layer->name, mxmlElementGetAttr(node, "name"), 50);
         layer->numTiles = layer->width * layer->height;
+        map->numTiles = map->numTiles + layer->numTiles;
       
+        // create the tiles
         layer->tiles = malloc(layer->numTiles * sizeof(int));
+
 
         // filling up all the tiles
         mxml_node_t * tile = mxmlFindElement(node, node, "tile",
@@ -216,6 +227,7 @@ TmxMap * TMX_LoadFile(char * filename) {
           }
           object = mxmlWalkNext(object, node, MXML_NO_DESCEND);
         }
+        // create the objects
         group->objects = malloc(l * sizeof(TmxObject));
         group->numObjects = l;
         // fillup the objects
@@ -244,11 +256,10 @@ TmxMap * TMX_LoadFile(char * filename) {
   }
 
 
-  // create the objects
-
-  // fill up the layer
-
   mxmlDelete(tree);
   return map;
 }
+
+
+
 

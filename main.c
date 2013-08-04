@@ -85,7 +85,7 @@ int
 main(int argc, char *argv[])
 {
 
-  int i, j, done;
+  int i, j, k, done;
   SDL_Event event;
 
   init();
@@ -93,6 +93,8 @@ main(int argc, char *argv[])
   SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
   SDL_RenderClear(renderer);
   SDL_RenderPresent(renderer);
+
+  printf("n1 %d\n", 9 / 10);
 
   // Load assets
   // Mix_Music * music = getMusic("assets/heroic.ogg"); 
@@ -102,11 +104,29 @@ main(int argc, char *argv[])
   SDL_Texture * characterTexture = getTexture("assets/character.png");
 
   TmxMap * map = TMX_LoadFile("assets/map1.tmx");
-  printf("orientation %s \n", map->orientation);
-  printf("numLayers %d\n", map->numLayers);
-  printf("Layer 1 height %d\n", map->layers[0].height);
-  printf("Layer 1 %s\n", map->layers[0].name);
-  printf("Layer 2 %s\n", map->layers[1].name);
+
+  SDL_Texture ** texturestable = malloc(map->numTilesets * sizeof(SDL_Texture *));
+  Sprite * sprites = malloc((map->numTiles + 1) * sizeof(Sprite));
+  for(i=0; i<map->numTilesets; i++) {
+    TmxTileset * set = &map->tilesets[i];
+    char str[80];
+    strcpy(str, "assets/");
+    strcat(str, set->source);
+    k = set->firstgid;
+    texturestable[i] = getTexture(str);
+    for(j=0; j<set->numTiles; j++) {
+        Sprite * sp = &sprites[k];
+        sp->source.w = sp->destination.w = set->tilewidth;
+        sp->source.h = sp->destination.h = set->tileheight;
+        sp->destination.x = sp->destination.y = 0;
+        sp->texture = texturestable[i];
+        sp->source.x = (j * set->tilewidth) % set->width;
+        sp->source.y = set->tileheight * ((j * set->tilewidth) / set->width);
+        k++;
+    }
+  }
+
+  // sprites[gid] =  
 
   //quit(1);
 
@@ -240,7 +260,7 @@ main(int argc, char *argv[])
     SDL_RenderClear(renderer);
 
     // render the ground
-    for(i = 0; i < lines + 2; i++) {
+    /*for(i = 0; i < lines + 2; i++) {
         y = mod(i * 48 + scroll_y, viewport.h + 48) - 48;
         for(j = 0;j < columns + 2; j++) {
             x = mod(j * 48 + scroll_x, viewport.w + 48) - 48;
@@ -248,6 +268,19 @@ main(int argc, char *argv[])
                 groundTable->table[abs(i + j) % 8], 
                 x, y);
         }
+    }*/
+
+    for(i=0; i<map->numLayers; i++) {
+      TmxLayer * layer = &map->layers[i];
+      for(j=0; j<layer->numTiles; j++) {
+          int gid = layer->tiles[j];
+          if(gid > 0) {
+            int x = (j % map->width) * map->tilewidth;
+            int y = (j / map->width) * map->tileheight;
+            printf("%d %d\n", x, y);
+            drawSpriteAt(renderer, &sprites[gid], x + scroll_x, y + scroll_y);
+          }
+      }
     }
 
     // render the character
