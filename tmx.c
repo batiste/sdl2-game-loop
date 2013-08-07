@@ -45,6 +45,8 @@ struct TmxObject {
   int height;
   int x;
   int y;
+  int xw;
+  int yw;
 };
 typedef struct TmxObject TmxObject;
 
@@ -236,12 +238,16 @@ TmxMap * TMX_LoadFile(char * filename) {
                                MXML_DESCEND);
         l = 0;
         while(object != NULL) {
+
           if(mxmlGetElement(object)) {
             TmxObject * tobject = &group->objects[l];
+            // it seems that some object might have no height...
             tobject->width = atoi(mxmlElementGetAttr(object, "width"));
             tobject->height = atoi(mxmlElementGetAttr(object, "height"));
             tobject->x = atoi(mxmlElementGetAttr(object, "x"));
             tobject->y = atoi(mxmlElementGetAttr(object, "y"));
+            tobject->xw = tobject->x + tobject->width;
+            tobject->yw = tobject->y + tobject->height;
             l++;
           }
           object = mxmlWalkNext(object, node, MXML_NO_DESCEND);

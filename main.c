@@ -81,6 +81,24 @@ void showSplashScreen(void) {
   }
 }
 
+int hasCollision(TmxMap * map, int x, int y) {
+  int i, j;
+  for(i=0; i<map->numObjectGroups; i++) {
+    TmxObjectGroup * group = &map->objectGroups[i];
+    for(j=0; j<group->numObjects; j++) {
+        TmxObject object = group->objects[j];
+        // shorcuts
+        if(x >= object.x && y >= object.y && x <= object.xw && y <= object.yw) {
+            printf("collision\n");
+            //quit(1);
+            return 1;
+        }
+    }
+  }
+  return 0;
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -192,6 +210,9 @@ main(int argc, char *argv[])
   SDL_Delay(1000);
   SDL_SetRenderDrawColor(renderer, 0x70, 0xc8, 0x40, 0xff);
 
+  int charx = viewport.w / 2;
+  int chary = viewport.h / 2;
+
   // The game loop
   while (!done) {
 
@@ -227,18 +248,21 @@ main(int argc, char *argv[])
       }
 
       // apply events to the world
-
-      int speed = 7;
-      if(wasd[0]) {
-        scroll_y = scroll_y + speed;
+      int speed = 5;
+      if(wasd[0] && hasCollision(map, charx+24, chary - speed+40) == 0) {
+         chary = chary - speed;
+         scroll_y = scroll_y + speed;
       }
-      if(wasd[1]) {
+      if(wasd[1] && hasCollision(map, charx+24 -speed, chary+40) == 0) {
+         charx = charx - speed;
          scroll_x = scroll_x + speed;
       }
-      if(wasd[2]) {
+      if(wasd[2] && hasCollision(map, charx+24, chary + speed+40) == 0) {
+         chary = chary + speed;
          scroll_y = scroll_y - speed;
       }
-      if(wasd[3]) {
+      if(wasd[3] && hasCollision(map, charx+24 + speed, chary+40) == 0) {
+         charx = charx + speed;
          scroll_x = scroll_x - speed;
       }
 
@@ -290,7 +314,7 @@ main(int argc, char *argv[])
       characterSprite = getSpriteFromAnimation(swordLeft, frameNum);
     }
 
-    drawSpriteAt(renderer, characterSprite, viewport.w / 2, viewport.h / 2);
+    drawSpriteAt(renderer, characterSprite, charx + scroll_x, chary + scroll_y);
 
 
     // do this every second on a physical frame
