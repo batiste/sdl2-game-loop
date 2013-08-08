@@ -85,14 +85,17 @@ int hasCollision(TmxMap * map, int x, int y) {
   int i, j;
   for(i=0; i<map->numObjectGroups; i++) {
     TmxObjectGroup * group = &map->objectGroups[i];
-    for(j=0; j<group->numObjects; j++) {
-        TmxObject object = group->objects[j];
-        // shorcuts
-        if(x >= object.x && y >= object.y && x <= object.xw && y <= object.yw) {
-            printf("collision\n");
-            //quit(1);
-            return 1;
-        }
+    printf("%s\n", group->name);
+    if(strcmp(group->name, "collisions") == 0) {
+      for(j=0; j<group->numObjects; j++) {
+          TmxObject object = group->objects[j];
+          // shorcuts
+          if(x >= object.x && y >= object.y && x <= object.xw && y <= object.yw) {
+              printf("collision\n");
+              //quit(1);
+              return 1;
+          }
+      }
     }
   }
   return 0;

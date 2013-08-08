@@ -2667,7 +2667,7 @@
    <tile gid="0"/>
    <tile gid="0"/>
    <tile gid="0"/>
-   <tile gid="0"/>
+   <tile gid="1"/>
    <tile gid="0"/>
    <tile gid="0"/>
    <tile gid="0"/>
@@ -5044,5 +5044,13 @@
   <object x="484" y="185" width="177" height="20"/>
   <object x="565" y="364" width="103" height="23"/>
   <object x="482" y="365" width="53" height="23"/>
+ </objectgroup>
+ <objectgroup name="entitites" width="50" height="50">
+  <object name="Porc1" type="porky" x="243" y="461" width="44" height="33">
+   <properties>
+    <property name="pattern" value="flee"/>
+    <property name="speed" value="1"/>
+   </properties>
+  </object>
  </objectgroup>
 </map>

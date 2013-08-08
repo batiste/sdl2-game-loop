@@ -40,6 +40,12 @@ struct TmxLayer {
 };
 typedef struct TmxLayer TmxLayer;
 
+struct TmxProperty {
+  char * name;
+  char * value;
+};
+typedef struct TmxProperty TmxProperty;
+
 struct TmxObject {
   int width;
   int height;
@@ -47,6 +53,8 @@ struct TmxObject {
   int y;
   int xw;
   int yw;
+  int numProperties;
+  TmxProperty * properties;
 };
 typedef struct TmxObject TmxObject;
 
@@ -158,7 +166,7 @@ TmxMap * TMX_LoadFile(char * filename) {
                          NULL, NULL,
                          MXML_DESCEND);
 
-  int i = 0, j = 0, k = 0, l = 0;
+  int i = 0, j = 0, k = 0, l = 0, m=0;
   // Second pass we fill the tilesets, layers and object groups
   while(node != NULL) {
     name = mxmlGetElement(node);
@@ -248,8 +256,41 @@ TmxMap * TMX_LoadFile(char * filename) {
             tobject->y = atoi(mxmlElementGetAttr(object, "y"));
             tobject->xw = tobject->x + tobject->width;
             tobject->yw = tobject->y + tobject->height;
-            l++;
+            tobject->numProperties = 0;
+            // count the properties
+            mxml_node_t * prop = mxmlFindElement(object, object, "property",
+                                   NULL, NULL,
+                                   MXML_DESCEND);
+
+            while(prop != NULL) {
+              if(mxmlGetElement(prop)) {
+                tobject->numProperties = tobject->numProperties + 1;
+              }
+              prop = mxmlWalkNext(prop, object, MXML_NO_DESCEND);
+            }
+            tobject->properties = malloc(tobject->numProperties * sizeof(TmxProperty));
+
+            // fill the properties
+            prop = mxmlFindElement(object, object, "property",
+                                   NULL, NULL,
+                                   MXML_DESCEND);
+            m = 0;
+            while(prop != NULL) {
+              if(mxmlGetElement(prop)) {
+                const char * name = mxmlElementGetAttr(prop, "name");
+                const char * value = mxmlElementGetAttr(prop, "name");
+                tobject->properties[m].name = malloc(sizeof(name));
+                strncpy(tobject->properties[m].name, name, sizeof(name));
+                tobject->properties[m].value = malloc(sizeof(value));
+                strncpy(tobject->properties[m].value, name, sizeof(value));
+              }
+              prop = mxmlWalkNext(prop, object, MXML_NO_DESCEND);
+              m = m + 1;
+            }
+
           }
+
+          // next object
           object = mxmlWalkNext(object, node, MXML_NO_DESCEND);
         }
 
