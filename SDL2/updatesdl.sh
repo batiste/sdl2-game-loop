@@ -4,7 +4,7 @@ prefixDir=`pwd`/sdl2-x86
 
 # ------------------------------ Functions Start ------------------------------
 function cloneSdlRepo {
-   (hg clone http://hg.libsdl.org/$1 && cd SDL && hg co default && hg pull -u)
+   (hg clone http://hg.libsdl.org/$1 && cd $1 && hg co default && hg pull -u)
 }
 
 function pullAndBuildSdlRepo {
@@ -19,9 +19,9 @@ function pullAndBuildSdlRepo {
     hg pull -u
     ./autogen.sh
     rm -rf build
-    mkdir build
-    cd build
-    ../configure --prefix=$prefixDir
+    #mkdir build
+    #cd build
+    ./configure --prefix=$prefixDir
     make
     make install
     cd ../..
@@ -39,8 +39,8 @@ function pullAndBuildSdlRepo {
 echo "Performing update of sdl2
 "
 echo -n "Removing current library..."
-rm -rf sdl2-x86
-mkdir sdl2-x86
+#rm -rf sdl2-x86
+#mkdir sdl2-x86
 echo " done"
 
 if [ ! -e SDL ] # Just simply check for SDL since all other depend on it
