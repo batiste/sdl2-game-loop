@@ -18,11 +18,11 @@ function pullAndBuildSdlRepo {
     hg co default
     hg pull -u
     ./autogen.sh
-    rm -rf build
+    #rm -rf build
     mkdir build
     cd build
-    ../configure --prefix=$prefixDir
-    make
+    ../configure --prefix=$prefixDir || exit 1
+    make || exit 1
     make install
     cd ../..
     echo "
@@ -38,10 +38,10 @@ function pullAndBuildSdlRepo {
 
 echo "Performing update of sdl2
 "
-echo -n "Removing current library..."
-rm -rf sdl2-x86
+#echo -n "Removing current library..."
+#rm -rf sdl2-x86
 mkdir sdl2-x86
-echo " done"
+#echo " done"
 
 if [ ! -e SDL ] # Just simply check for SDL since all other depend on it
 then
@@ -64,7 +64,7 @@ then
     sleep 1
 fi
 
-####  SDL BUILD
+#  SDL BUILD
 pullAndBuildSdlRepo "SDL"
 export SDL_CONFIG=$prefixDir/bin/sdl2-config
 if [ ! -f $SDL_CONFIG ]
@@ -73,10 +73,10 @@ then
     exit
 fi
 
-####  Build the rest in parallel
-pullAndBuildSdlRepo "SDL_image"  &
-pullAndBuildSdlRepo "SDL_mixer" &
-pullAndBuildSdlRepo "SDL_ttf" &
+#  Build the rest
+pullAndBuildSdlRepo "SDL_image"
+pullAndBuildSdlRepo "SDL_mixer"
+pullAndBuildSdlRepo "SDL_ttf"
 pullAndBuildSdlRepo "SDL_net"
 
 

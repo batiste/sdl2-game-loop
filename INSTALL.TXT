@@ -1,6 +1,6 @@
 Before compiling SDL2 it is necessary/better to have some dev libraries and headers installed:
 
-$ apt-get install libvorbis-dev libsmpeg-dev libasound2-dev libpulse-dev libpng-dev
+$ apt-get install libvorbis-dev libsmpeg-dev libasound2-dev libpulse-dev libpng-dev libfreetype6-dev autoconf
 
 Then
 
