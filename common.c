@@ -35,6 +35,7 @@ SDL_Window * window = NULL;
 SDL_Renderer * renderer = NULL;
 SDL_DisplayMode displaymode;
 SDL_Rect viewport;
+int channels[4] = {0, 0, 0, 0};
 
 GenericList * texturesList;
 GenericList * musicList;
@@ -134,10 +135,10 @@ void init(void) {
   // init sound
   int audio_rate = 22050;
   Uint16 audio_format = AUDIO_S16SYS;
-  int audio_channels = 4;
+  int nb_audio_channels = 4;
   int audio_buffers = 4096;
 
-  if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) != 0) {
+  if(Mix_OpenAudio(audio_rate, audio_format, nb_audio_channels, audio_buffers) != 0) {
     fprintf(stderr, "Unable to initialize audio: %s\n", Mix_GetError());
     quit(1);
   }

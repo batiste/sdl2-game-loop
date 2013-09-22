@@ -114,7 +114,8 @@ main(int argc, char *argv[])
 
   // Load assets
   // Mix_Music * music = getMusic("assets/heroic.ogg"); 
-  Mix_Music * swish = getMusic("assets/swish.ogg");
+  // Mix_Music * swish = getMusic("assets/swish.ogg");
+  Mix_Chunk * chunk = Mix_LoadWAV("assets/swish-2.ogg");
   TTF_Font * font = getFont("assets/yoster.ttf", 26);
   SDL_Texture * groundTexture = getTexture("assets/ground.png");
   SDL_Texture * characterTexture = getTexture("assets/character.png");
@@ -142,8 +143,13 @@ main(int argc, char *argv[])
     }
   }
 
-  // sprites[gid] =  
-
+  // a simple channel_finished function
+  void channelDone(int channelNum) {
+      printf("Channel %d finished\n", channelNum);
+      channels[channelNum] = 0;
+  }
+  Mix_ChannelFinished(channelDone);
+  
   //quit(1);
 
   /*Mix_PlayMusic(music, -1);
@@ -205,7 +211,7 @@ main(int argc, char *argv[])
   printf("Desired fps %d\n", framesBySecond);
   printf("Start the game loop\n");
 
-  SDL_Delay(100);
+  SDL_Delay(50);
   showSplashScreen();
   SDL_Delay(1000);
   SDL_SetRenderDrawColor(renderer, 0x70, 0xc8, 0x40, 0xff);
@@ -286,6 +292,9 @@ main(int argc, char *argv[])
       }
     }
 
+ 	
+
+
     // render the character
     characterSprite = getSpriteFromAnimation(stand, frameNum);
 
@@ -304,14 +313,17 @@ main(int argc, char *argv[])
 
     if(controls[0]) {
       characterSprite = getSpriteFromAnimation(swordRight, frameNum);
-    }
+      if(wasd[3])
+        characterSprite = getSpriteFromAnimation(swordRight, frameNum);
+      if(wasd[1])
+        characterSprite = getSpriteFromAnimation(swordLeft, frameNum);
 
-    if(controls[0] && wasd[1]) {
-      if(controls[0]) {
-        Mix_PlayMusic(swish, 0);
+
+      if( !Mix_Playing(0) && Mix_PlayChannel( 0, chunk, 0 ) == -1 )
+      {
+	        fprintf(stderr, "Unable to play WAV file: %s\n", Mix_GetError());  
       }
 
-      characterSprite = getSpriteFromAnimation(swordLeft, frameNum);
     }
 
     drawSpriteAt(renderer, characterSprite, charx + scroll_x, chary + scroll_y);

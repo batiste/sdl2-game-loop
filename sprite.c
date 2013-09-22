@@ -26,8 +26,15 @@ struct Animation {
     //Uint32 startTick;
     //Uint32 currentTick;
     int ticksByFrame;
+    int duration;
 };
 typedef struct Animation Animation;
+
+struct AnimationInstance {
+    Animation * animation;
+    int startFrame;
+    int currentTick;
+};
 
 Sprite * 
 createSprite(SDL_Texture * texture, int w, int h) {
@@ -71,6 +78,7 @@ Animation * createAnimation(SDL_Texture * texture, SDL_Rect * sprites_start, int
     Animation * anim = (Animation *) malloc(sizeof(Animation));
     anim->sprites = spritetable;
     anim->ticksByFrame = ticksByFrame;
+    anim->duration = ticksByFrame * numberSprite;
 
     //anim->startTick = 0;
     //anim->currentTick = 0;
