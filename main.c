@@ -2,7 +2,7 @@
   Copyright (C) 2013 batiste.bieler@gmail.com 
     
   SDL game loop
- */
+*/
 
 #include "common.c"
 #include "sprite.c"
@@ -259,20 +259,20 @@ main(int argc, char *argv[])
       // apply events to the world
       int speed = 5;
       if(wasd[0] && hasCollision(map, charx+24, chary - speed+40) == 0) {
-         chary = chary - speed;
-         scroll_y = scroll_y + speed;
+        chary = chary - speed;
+        scroll_y = scroll_y + speed;
       }
       if(wasd[1] && hasCollision(map, charx+24 -speed, chary+40) == 0) {
-         charx = charx - speed;
-         scroll_x = scroll_x + speed;
+        charx = charx - speed;
+        scroll_x = scroll_x + speed;
       }
       if(wasd[2] && hasCollision(map, charx+24, chary + speed+40) == 0) {
-         chary = chary + speed;
-         scroll_y = scroll_y - speed;
+        chary = chary + speed;
+        scroll_y = scroll_y - speed;
       }
       if(wasd[3] && hasCollision(map, charx+24 + speed, chary+40) == 0) {
-         charx = charx + speed;
-         scroll_x = scroll_x - speed;
+        charx = charx + speed;
+        scroll_x = scroll_x - speed;
       }
 
     }
@@ -283,6 +283,7 @@ main(int argc, char *argv[])
     // this is not free        
     SDL_RenderClear(renderer);
 
+    // rendering the grid
     for(i=0; i<map->numLayers; i++) {
       TmxLayer * layer = &map->layers[i];
       for(j=0; j<layer->numTiles; j++) {
@@ -294,9 +295,6 @@ main(int argc, char *argv[])
           }
       }
     }
-
- 	
-
 
     // render the character
     characterSprite = getSpriteFromAnimation(stand, frameNum);
@@ -322,9 +320,8 @@ main(int argc, char *argv[])
         characterSprite = getSpriteFromAnimation(swordLeft, frameNum);
 
 
-      if( !Mix_Playing(0) && Mix_PlayChannel( 0, chunk, 0 ) == -1 )
-      {
-	        fprintf(stderr, "Unable to play WAV file: %s\n", Mix_GetError());  
+      if( !Mix_Playing(0) && Mix_PlayChannel( 0, chunk, 0 ) == -1 ) {
+        fprintf(stderr, "Unable to play WAV file: %s\n", Mix_GetError());  
       }
 
     }
@@ -335,20 +332,20 @@ main(int argc, char *argv[])
     // do this every second on a physical frame
     if(frameNum % framesBySecond == 0 && physical_frame) {
 
-        if(text_texture1) {
-            SDL_DestroyTexture(text_texture1);
-        }
+      if(text_texture1) {
+          SDL_DestroyTexture(text_texture1);
+      }
 
-        char buffer[50];
-        if(draw_mode == 1) {
-          sprintf(buffer, "Press c to maximize FPS. Current FPS: %d", renderedFrames);
-        } else {
-          sprintf(buffer, "Press c to cap to 50FPS. Current FPS: %d", renderedFrames);
-        }
+      char buffer[50];
+      if(draw_mode == 1) {
+        sprintf(buffer, "Press c to maximize FPS. Current FPS: %d", renderedFrames);
+      } else {
+        sprintf(buffer, "Press c to cap to 50FPS. Current FPS: %d", renderedFrames);
+      }
 
-        text_texture1 = renderFontToTexture(font, buffer);
+      text_texture1 = renderFontToTexture(font, buffer);
 
-        renderedFrames = 0;
+      renderedFrames = 0;
     }
 
     if(text_texture1) {
