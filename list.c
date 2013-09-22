@@ -164,7 +164,7 @@ displayList(GenericList *list) {
     printf("List length %d\n", list->length);
     int i = 1;
     for(el = list->first; el != NULL; el=el->next, i=i+1) {
-        printf("Item %d address %d\n", i, (int)el->data);
+        printf("Item %d address %p\n", i, el->data);
     }
 }
 
