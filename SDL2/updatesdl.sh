@@ -38,17 +38,10 @@ function pullAndBuildSdlRepo {
 
 echo "Performing update of sdl2
 "
-<<<<<<< HEAD
-echo -n "Removing current library..."
-#rm -rf sdl2-x86
-#mkdir sdl2-x86
-echo " done"
-=======
 #echo -n "Removing current library..."
 #rm -rf sdl2-x86
 mkdir sdl2-x86
 #echo " done"
->>>>>>> 2d86a20ea9c5060a4f020aaa20f618005e86ebd8
 
 if [ ! -e SDL ] # Just simply check for SDL since all other depend on it
 then
