@@ -287,7 +287,7 @@ TmxMap * TMX_LoadFile(char * filename) {
               prop = mxmlWalkNext(prop, object, MXML_NO_DESCEND);
               m = m + 1;
             }
-
+            l++;
           }
 
           // next object
