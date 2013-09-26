@@ -48,7 +48,7 @@ void handleKeyboard(int key, int down_or_up) {
       controls[0] = down_or_up;
       break;
   }
-  printf("Keyboard event wasd %d, %d, %d, %d\n", wasd[0], wasd[1], wasd[2], wasd[3]);
+  //printf("Keyboard event wasd %d, %d, %d, %d\n", wasd[0], wasd[1], wasd[2], wasd[3]);
 }
 
 void showSplashScreen(void) {
@@ -85,13 +85,13 @@ int hasCollision(TmxMap * map, int x, int y) {
   int i, j;
   for(i=0; i<map->numObjectGroups; i++) {
     TmxObjectGroup * group = &map->objectGroups[i];
-    printf("%s\n", group->name);
+    //printf("%s\n", group->name);
     if(strcmp(group->name, "collisions") == 0) {
       for(j=0; j<group->numObjects; j++) {
           TmxObject object = group->objects[j];
           // shorcuts
           if(x >= object.x && y >= object.y && x <= object.xw && y <= object.yw) {
-              printf("collision\n");
+              //printf("collision\n");
               //quit(1);
               return 1;
           }
