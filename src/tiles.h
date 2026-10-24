@@ -6,6 +6,8 @@
     ground.png   4 x 2    ids   1 ..   8
     tiles.png   21 x 10   ids   9 .. 218
     nature.png   6 x 9    ids 219 .. 272   (see tools/gen_nature_tiles.py)
+    houses       generated at load time from tiles.png, recoloured per
+                 house style (see atlas.c), ids 273 ..
 
   0 means "no tile".
  */
@@ -18,22 +20,29 @@
 #define GID_GROUND(i) (1 + (i))
 #define GID_TILES(col, row) (9 + (row) * 21 + (col))
 #define GID_NATURE(col, row) (219 + (row) * 6 + (col))
-#define GID_COUNT (219 + 6 * 9)
+#define GID_HOUSE_BASE (219 + 6 * 9)
+
+// Pieces of a house style. Large houses are assembled from the corners,
+// edges and middles of a 4-wide piece set; small houses are used as is.
+#define NUM_HOUSE_STYLES 12
+#define HOUSE_PIECES 46
+#define PIECE_ROOF(c, r) ((r) * 4 + (c))              // large roof, 4 x 3
+#define PIECE_SMALL_ROOF(c, r) (12 + (r) * 3 + (c))   // small roof, 3 x 3, row 2 is the door step
+#define PIECE_ROOM(c, r) (21 + (r) * 4 + (c))         // large interior, 4 x 4
+#define PIECE_SMALL_ROOM(c, r) (37 + (r) * 3 + (c))   // small interior, 3 x 3
+#define GID_HOUSE(style, piece) (GID_HOUSE_BASE + (style) * HOUSE_PIECES + (piece))
+#define GID_IS_HOUSE(gid) ((gid) >= GID_HOUSE_BASE && (gid) < GID_COUNT)
+#define HOUSE_PIECE(gid) (((gid) - GID_HOUSE_BASE) % HOUSE_PIECES)
+// door steps and interiors are seen from above: drawn flat
+#define GID_IS_FLAT_HOUSE(gid) (GID_IS_HOUSE(gid) && HOUSE_PIECE(gid) >= PIECE_SMALL_ROOF(0, 2))
+
+#define GID_COUNT (GID_HOUSE_BASE + NUM_HOUSE_STYLES * HOUSE_PIECES)
 
 #define GID_PALM GID_GROUND(0)
 #define GID_GRASS GID_GROUND(7)
 // ground.png 1-3 have yellow flowers, 4-6 small specks
 #define GID_GRASS_FLOWERS(i) GID_GROUND(1 + (i))
 #define GID_GRASS_SPECKS(i) GID_GROUND(4 + (i))
-
-// door steps of the small houses, flat tiles in front of the wall
-#define GID_IS_DOOR_STEP(gid) ((gid) >= GID_TILES(10, 3) && (gid) <= GID_TILES(15, 3))
-
-// houses without a roof are seen from above, so they are drawn flat
-#define GID_IN_RECT(gid, c0, r0, c1, r1)                                     \
-  ((gid) >= GID_TILES(0, r0) && (gid) <= GID_TILES(20, r1) &&                \
-   ((gid) - GID_TILES(0, 0)) % 21 >= (c0) && ((gid) - GID_TILES(0, 0)) % 21 <= (c1))
-#define GID_IS_OPEN_HOUSE(gid) (GID_IN_RECT(gid, 1, 1, 4, 4) || GID_IN_RECT(gid, 10, 1, 12, 2))
 
 // nature.png terrain sets: 3x3 blob in cols 0-2, inner corners in cols 3-4,
 // plain centre variants in col 5
@@ -59,6 +68,7 @@ typedef enum Deco {
   DECO_FENCE_RIGHT,
   DECO_FENCE_VERTICAL,
   DECO_PEBBLES,
+  DECO_CHIMNEY,
   DECO_COUNT
 } Deco;
 

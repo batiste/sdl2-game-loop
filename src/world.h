@@ -32,7 +32,10 @@ typedef struct House {
   int doorX, doorY;      // walkable cell just outside the door
   int village;
   bool roof;             // has a roof hiding the interior
+  int style;             // colours, see atlas.c
   SDL_FRect body;        // the walls' outer bounds, in world pixels
+  bool chimney;
+  float chimneyX, chimneyY;  // top-left of the chimney sprite, world pixels
 } House;
 
 typedef struct Village {
@@ -41,6 +44,7 @@ typedef struct Village {
   int radius;            // in cells
   int firstHouse;
   int numHouses;
+  int styles[3];         // house styles used in this village
 } Village;
 
 typedef struct World {

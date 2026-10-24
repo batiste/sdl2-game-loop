@@ -10,7 +10,8 @@ Layout (6 columns x 9 rows, 48px tiles):
 
   rows 0-2  water   3x3 blob (cols 0-2), inner corners (cols 3-4), extras (col 5)
   rows 3-5  path    same layout as water
-  rows 6-8  decorations on a transparent background
+  rows 6-8  decorations on a transparent background (the last one is a
+            chimney, drawn over roofs)
 
 Inner corners: col 3 row 0 / col 4 row 0 / col 3 row 1 / col 4 row 1 have
 grass in the bottom-right / bottom-left / top-right / top-left corner.
@@ -477,6 +478,23 @@ def pebbles():
     return s
 
 
+def chimney():
+    """Brick chimney, drawn over a roof tile."""
+    s = Canvas(ART, ART)
+    for y in range(7, 19):
+        for x in range(9, 16):
+            mortar = y % 3 == 0 or (x + (y // 3) * 2) % 4 == 0
+            col = WOOD_DARK if mortar else (WOOD if x >= 14 else WOOD_LIGHT)
+            s.set(x, y, col)
+    for x in range(8, 17):  # stone cap
+        s.set(x, 5, STONE_LIGHT)
+        s.set(x, 6, STONE if x < 15 else STONE_DARK)
+    for x in range(10, 15):
+        s.set(x, 5, (34, 34, 34, 255))  # flue
+    s.outline(OUTLINE)
+    return s
+
+
 def main():
     sheet = Canvas(COLS * ART, ROWS * ART)
     for (tx, ty), tile in terrain_tiles(water_paint, waves=True).items():
@@ -491,6 +509,7 @@ def main():
         tall_grass(),
         mushrooms(), reeds(), lily(False), lily(True), water_rock(), sign(),
         fence(False, True), fence(True, True), fence(True, False), fence_vertical(), pebbles(),
+        chimney(),
     ]
     for i, tile in enumerate(decorations):
         sheet.blit(tile, (i % COLS) * ART, (6 + i // COLS) * ART, transparent=False)

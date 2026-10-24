@@ -115,7 +115,11 @@ static void build_minimap(Game *game) {
   for (int y = 0; y < world->height; y++) {
     Uint8 *row = (Uint8 *)surface->pixels + y * surface->pitch;
     for (int x = 0; x < world->width; x++) {
-      SDL_Color c = COLORS[world->kind[y * world->width + x]];
+      int i = y * world->width + x;
+      SDL_Color c = COLORS[world->kind[i]];
+      if (world->kind[i] == CELL_HOUSE && world->houseAt[i] >= 0) {
+        c = game->atlas.roofColors[world->houses[world->houseAt[i]].style];
+      }
       row[x * 4 + 0] = c.r;
       row[x * 4 + 1] = c.g;
       row[x * 4 + 2] = c.b;
@@ -255,7 +259,7 @@ static void update(Game *game) {
 static bool is_flat(Uint16 gid) {
   return gid == GID_DECO(DECO_RED_FLOWERS) || gid == GID_DECO(DECO_PURPLE_FLOWERS) ||
          gid == GID_DECO(DECO_PEBBLES) || gid == GID_DECO(DECO_LILY) ||
-         gid == GID_DECO(DECO_LILY_FLOWER) || GID_IS_DOOR_STEP(gid) || GID_IS_OPEN_HOUSE(gid);
+         gid == GID_DECO(DECO_LILY_FLOWER) || GID_IS_FLAT_HOUSE(gid);
 }
 
 static bool in_house(const House *house, int col, int row) {
@@ -283,7 +287,7 @@ static void update_roof(Game *game, Uint64 now) {
 }
 
 static bool is_building(Uint16 gid) {
-  return gid >= GID_TILES(0, 0) && gid < GID_NATURE(0, 0);
+  return GID_IS_HOUSE(gid);
 }
 
 static void push_drawable(Game *game, int *count, Drawable d) {
@@ -306,6 +310,32 @@ static int SDLCALL compare_drawables(const void *a, const void *b) {
 
 static float lerp(float a, float b, float t) {
   return a + (b - a) * t;
+}
+
+// A few puffs rising from every chimney in view, on the 2x art pixel grid.
+static void render_smoke(Game *game, float camX, float camY) {
+  SDL_Renderer *renderer = game->engine.renderer;
+  const World *world = game->world;
+  // seconds, wrapped so the float keeps its precision
+  float time = (float)((double)(SDL_GetTicksNS() % (3200 * SDL_NS_PER_SECOND)) / (double)SDL_NS_PER_SECOND);
+  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+  for (int h = 0; h < world->numHouses; h++) {
+    const House *house = &world->houses[h];
+    float baseX = house->chimneyX + 25 - camX, baseY = house->chimneyY + 8 - camY;
+    if (!house->chimney || baseX < -40 || baseY < -80 || baseX > (float)game->engine.width + 40 ||
+        baseY > (float)game->engine.height + 20) {
+      continue;
+    }
+    for (int k = 0; k < 4; k++) {
+      float phase = SDL_fmodf(time / 3.2f + (float)k / 4 + (float)h * 0.37f, 1.0f);
+      float size = SDL_floorf((4 + phase * 8) / 2) * 2;
+      float x = baseX + SDL_sinf(phase * 5 + (float)h) * 3 + phase * 14 - size / 2;
+      float y = baseY - phase * 46 - size / 2;
+      Uint8 alpha = (Uint8)(170 * (1 - phase) * SDL_min(1.0f, phase * 8));
+      SDL_SetRenderDrawColor(renderer, 236, 236, 236, alpha);
+      SDL_RenderFillRect(renderer, &(SDL_FRect){SDL_floorf(x / 2) * 2, SDL_floorf(y / 2) * 2, size, size});
+    }
+  }
 }
 
 static void render_world(Game *game, float camX, float camY, float t) {
@@ -355,6 +385,19 @@ static void render_world(Game *game, float camX, float camY, float t) {
     }
   }
 
+  // chimneys sit on the roof: drawn right after its first row
+  const Sprite *chimney = &tiles[GID_DECO(DECO_CHIMNEY)];
+  for (int h = 0; h < world->numHouses; h++) {
+    const House *house = &world->houses[h];
+    if (house->chimney && house != open && house->x <= col1 && house->x + house->w > col0 &&
+        house->y <= row1 && house->y + house->h > row0) {
+      push_drawable(game, &count, (Drawable){
+          .key = (float)((house->y + 1) * TILE_SIZE) + 0.5f, .sprite = chimney,
+          .x = SDL_roundf(house->chimneyX - camX), .y = SDL_roundf(house->chimneyY - camY),
+      });
+    }
+  }
+
   for (int i = 0; i < game->npcs.count; i++) {
     const Npc *npc = &game->npcs.items[i];
     float x = lerp(npc->prevX, npc->x, t), y = lerp(npc->prevY, npc->y, t);
@@ -395,7 +438,14 @@ static void render_world(Game *game, float camX, float camY, float t) {
         }
       }
     }
+    if (open->chimney) {
+      SDL_SetTextureAlphaModFloat(chimney->texture, game->roofAlpha);
+      sprite_draw(renderer, chimney, SDL_roundf(open->chimneyX - camX), SDL_roundf(open->chimneyY - camY));
+      SDL_SetTextureAlphaModFloat(chimney->texture, 1.0f);
+    }
   }
+
+  render_smoke(game, camX, camY);
 
   // the closest villager or pig on the same side of the walls says something
   int closest = -1;

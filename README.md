@@ -18,6 +18,11 @@ roads, and villagers going about their day.
 - **Villagers** with different shirt colours live in the houses. They come
   out, walk the roads to the plaza, visit neighbours, sometimes travel to
   another village, and go back inside. Pigs potter around the villages.
+- **Varied houses**: cottages and houses from 3 to 6 tiles wide, assembled
+  from the corner, edge and middle pieces of the original art, in 12 styles
+  (red tile, slate, moss, thatch, charcoal and terracotta roofs; beige,
+  plaster, stone or timber walls; brick, wood or stone floors) recoloured at
+  load time. Each village has its own few styles. Chimneys puff smoke.
 - **Enterable houses**: walls have real collision with a door opening; step
   inside and the roof fades away to show the room and whoever is home.
   Villagers walk in and out through the door too.
@@ -77,7 +82,7 @@ Assets are copied next to the executable at build time and located with
 | File                | Contents                                           |
 | ------------------- | -------------------------------------------------- |
 | `assets/ground.png` | grass variants and the palm tree                   |
-| `assets/tiles.png`  | houses, the pig; its grass is made transparent at load time |
+| `assets/tiles.png`  | houses and the pig; grass made transparent and houses recoloured at load time |
 | `assets/nature.png` | water, path, bushes, rocks, flowers, fences...     |
 | `assets/character.png` | player sprite sheet; villagers are recoloured copies |
 

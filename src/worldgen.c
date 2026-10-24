@@ -15,37 +15,21 @@
 
 #include "pathfind.h"
 
-typedef struct HouseTemplate {
-  int col, row;  // top-left tile in tiles.png
+// A house to build: either a small cottage with a door step, or a large
+// house of any size assembled from corner, edge and middle pieces.
+typedef struct HousePlan {
   int w, h;
-  int doorCol;   // door column, relative to the house
-  bool step;     // the last row is a walkable door step
-  int weight;
+  int doorCol;  // relative to the house
+  bool small;
+  bool roof;
+  int style;
 
-  // Walls, in pixels relative to the house: outer bounds, thickness of
-  // each side and the door opening in the bottom wall.
+  // walls, in pixels relative to the house: outer bounds, thickness of
+  // each side and the door opening in the bottom wall
   int bodyX, bodyY, bodyW, bodyH;
   int top, left, right, bottom;
   int door0, door1;
-
-  // Interior shown when the roof fades: the matching roofless house in
-  // tiles.png, row by row (the large one is a row taller).
-  bool roof;
-  int interiorCol, interiorRow;
-  int interiorRows[4];
-} HouseTemplate;
-
-static const HouseTemplate TEMPLATES[] = {
-    // large, red roof
-    {1, 7, 4, 3, 1, false, 40, 0, 0, 192, 144, 18, 12, 18, 14, 60, 81, true, 1, 1, {0, 1, 3}},
-    // small, red roof
-    {13, 1, 3, 3, 1, true, 45, 22, 0, 98, 96, 19, 15, 16, 14, 58, 83, true, 10, 1, {0, 1, 2}},
-    // small, open roof
-    {10, 1, 3, 3, 1, true, 8, 22, 0, 98, 96, 19, 15, 16, 14, 58, 83, false, 0, 0, {0}},
-    // large, open roof
-    {1, 1, 4, 4, 1, false, 7, 0, 0, 192, 192, 18, 12, 18, 14, 60, 81, false, 0, 0, {0}},
-};
-#define NUM_TEMPLATES ((int)SDL_arraysize(TEMPLATES))
+} HousePlan;
 
 enum { RES_NONE, RES_MARGIN, RES_HOUSE };
 
@@ -345,17 +329,17 @@ static void add_box(World *world, int x, int y, Box b) {
 }
 
 // Cut the wall rectangles of a house along the cell grid.
-static void add_walls(World *world, const HouseTemplate *t, int hx, int hy) {
-  int x0 = t->bodyX, y0 = t->bodyY, x1 = t->bodyX + t->bodyW, y1 = t->bodyY + t->bodyH;
+static void add_walls(World *world, const HousePlan *p, int hx, int hy) {
+  int x0 = p->bodyX, y0 = p->bodyY, x1 = p->bodyX + p->bodyW, y1 = p->bodyY + p->bodyH;
   const SDL_Rect walls[] = {
-      {x0, y0, x1 - x0, t->top},
-      {x0, y0, t->left, y1 - y0},
-      {x1 - t->right, y0, t->right, y1 - y0},
-      {x0, y1 - t->bottom, t->door0 - x0, t->bottom},
-      {t->door1, y1 - t->bottom, x1 - t->door1, t->bottom},
+      {x0, y0, x1 - x0, p->top},
+      {x0, y0, p->left, y1 - y0},
+      {x1 - p->right, y0, p->right, y1 - y0},
+      {x0, y1 - p->bottom, p->door0 - x0, p->bottom},
+      {p->door1, y1 - p->bottom, x1 - p->door1, p->bottom},
   };
-  for (int r = 0; r < t->h; r++) {
-    for (int c = 0; c < t->w; c++) {
+  for (int r = 0; r < p->h; r++) {
+    for (int c = 0; c < p->w; c++) {
       SDL_Rect cell = {c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE};
       for (int k = 0; k < (int)SDL_arraysize(walls); k++) {
         SDL_Rect part;
@@ -368,30 +352,50 @@ static void add_walls(World *world, const HouseTemplate *t, int hx, int hy) {
   }
 }
 
-static const HouseTemplate *pick_template(Gen *g) {
-  int total = 0;
-  for (int i = 0; i < NUM_TEMPLATES; i++) {
-    total += TEMPLATES[i].weight;
+static HousePlan plan_house(Gen *g, const Village *v) {
+  HousePlan p = {.style = v->styles[rnd(g, (int)SDL_arraysize(v->styles))], .roof = rndf(g) > 0.08f};
+  if (rndf(g) < 0.3f) {
+    // cottage, measured from the small house art
+    p.small = true;
+    p.w = 3, p.h = 3, p.doorCol = 1;
+    p.bodyX = 22, p.bodyY = 0, p.bodyW = 98, p.bodyH = 96;
+    p.top = 19, p.left = 15, p.right = 16, p.bottom = 14;
+    p.door0 = 58, p.door1 = 83;
+  } else {
+    static const int WIDTHS[] = {3, 4, 4, 4, 5, 5, 6};
+    p.w = WIDTHS[rnd(g, (int)SDL_arraysize(WIDTHS))];
+    p.h = p.w >= 4 && rndf(g) < 0.4f ? 4 : 3;
+    p.doorCol = 1 + rnd(g, p.w - 2);
+    p.bodyW = p.w * TILE_SIZE, p.bodyH = p.h * TILE_SIZE;
+    p.top = 18, p.left = 12, p.right = 18, p.bottom = 14;
+    p.door0 = p.doorCol * TILE_SIZE + 12, p.door1 = p.doorCol * TILE_SIZE + 33;
   }
-  int r = rnd(g, total);
-  for (int i = 0; i < NUM_TEMPLATES; i++) {
-    if ((r -= TEMPLATES[i].weight) < 0) {
-      return &TEMPLATES[i];
-    }
+  return p;
+}
+
+// Which piece of the large house set goes in cell (c, r).
+static int large_piece(const HousePlan *p, int c, int r, bool room, bool window) {
+  int last = p->w - 1, bottom = p->h - 1;
+  int col = c == 0 ? 0 : (c == last ? 3 : 2);
+  bool door = r == bottom && c == p->doorCol;
+  if (!room) {
+    return PIECE_ROOF(door ? 1 : col, r == 0 ? 0 : (r == bottom ? 2 : 1));
   }
-  return &TEMPLATES[0];
+  // inside: window notches in the back wall, side windows every other row
+  int row = r == 0 ? 0 : (r == bottom ? 3 : (r % 2 ? 1 : 2));
+  return PIECE_ROOM(door || (r == 0 && window && col == 2) ? 1 : col, row);
 }
 
 static bool try_house(Gen *g, Village *v, int villageIndex) {
-  const HouseTemplate *t = pick_template(g);
+  HousePlan p = plan_house(g, v);
   float angle = rndf(g) * 2 * SDL_PI_F;
-  float dist = 4.5f + rndf(g) * 5.0f;
-  int hx = v->centerX + (int)SDL_roundf(SDL_cosf(angle) * dist * 1.3f) - t->w / 2;
-  int hy = v->centerY + (int)SDL_roundf(SDL_sinf(angle) * dist) - t->h / 2;
+  float dist = 4.5f + (float)p.w * 0.4f + rndf(g) * 5.0f;
+  int hx = v->centerX + (int)SDL_roundf(SDL_cosf(angle) * dist * 1.3f) - p.w / 2;
+  int hy = v->centerY + (int)SDL_roundf(SDL_sinf(angle) * dist) - p.h / 2;
 
   // the footprint and a one cell ring around it must be free
-  for (int y = hy - 1; y <= hy + t->h; y++) {
-    for (int x = hx - 1; x <= hx + t->w; x++) {
+  for (int y = hy - 1; y <= hy + p.h; y++) {
+    for (int x = hx - 1; x <= hx + p.w; x++) {
       if (x < 2 || y < 2 || x >= g->w - 2 || y >= g->h - 3) {
         return false;
       }
@@ -403,28 +407,28 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
   }
 
   // the footpath starts at the door step, or right below the wall
-  int doorX = hx + t->doorCol;
-  int doorY = t->step ? hy + t->h - 1 : hy + t->h;
-  int stepRow = t->step ? hy + t->h - 1 : -1;
+  int doorX = hx + p.doorCol;
+  int doorY = p.small ? hy + p.h - 1 : hy + p.h;
+  int stepRow = p.small ? hy + p.h - 1 : -1;
   if (road_cost(g, doorX, doorY, doorX, doorY) < 0) {
     return false;
   }
 
   // reserve, then make sure a footpath can reach the plaza
-  Uint8 saved[(4 + 2) * (4 + 2)];
+  Uint8 saved[(6 + 2) * (4 + 2)];
   int n = 0;
-  for (int y = hy - 1; y <= hy + t->h; y++) {
-    for (int x = hx - 1; x <= hx + t->w; x++) {
+  for (int y = hy - 1; y <= hy + p.h; y++) {
+    for (int x = hx - 1; x <= hx + p.w; x++) {
       int i = y * g->w + x;
       saved[n++] = g->reserved[i];
-      bool inside = x >= hx && y >= hy && x < hx + t->w && y < hy + t->h && y != stepRow;
+      bool inside = x >= hx && y >= hy && x < hx + p.w && y < hy + p.h && y != stepRow;
       g->reserved[i] = inside ? RES_HOUSE : SDL_max(g->reserved[i], RES_MARGIN);
     }
   }
   if (!route(g, doorX, doorY, v->centerX, v->centerY, 1.0f)) {
     n = 0;
-    for (int y = hy - 1; y <= hy + t->h; y++) {
-      for (int x = hx - 1; x <= hx + t->w; x++) {
+    for (int y = hy - 1; y <= hy + p.h; y++) {
+      for (int x = hx - 1; x <= hx + p.w; x++) {
         g->reserved[y * g->w + x] = saved[n++];
       }
     }
@@ -436,26 +440,36 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
   House *house = &world->houses[index];
   float ox = (float)(hx * TILE_SIZE), oy = (float)(hy * TILE_SIZE);
   *house = (House){
-      .x = hx, .y = hy, .w = t->w, .h = t->h, .doorX = doorX, .doorY = doorY,
-      .village = villageIndex, .roof = t->roof,
-      .body = {ox + (float)t->bodyX, oy + (float)t->bodyY, (float)t->bodyW, (float)t->bodyH},
+      .x = hx, .y = hy, .w = p.w, .h = p.h, .doorX = doorX, .doorY = doorY,
+      .village = villageIndex, .roof = p.roof, .style = p.style,
+      .body = {ox + (float)p.bodyX, oy + (float)p.bodyY, (float)p.bodyW, (float)p.bodyH},
   };
+  if (p.roof && rndf(g) < 0.6f) {
+    // chimney somewhere along the ridge
+    house->chimney = true;
+    house->chimneyX = house->body.x + 4 + rndf(g) * (house->body.w - 56);
+    house->chimneyY = oy - 6;
+  }
 
-  for (int r = 0; r < t->h; r++) {
-    for (int c = 0; c < t->w; c++) {
+  for (int c = 0; c < p.w; c++) {
+    bool window = rndf(g) < 0.4f;
+    for (int r = 0; r < p.h; r++) {
       int i = (hy + r) * g->w + hx + c;
-      world->top[i] = (Uint16)GID_TILES(t->col + c, t->row + r);
+      int outside = p.small ? (p.roof ? PIECE_SMALL_ROOF(c, r) : PIECE_SMALL_ROOM(c, r))
+                            : large_piece(&p, c, r, !p.roof, window);
+      world->top[i] = (Uint16)GID_HOUSE(p.style, outside);
       world->houseAt[i] = (Sint16)index;
       if (hy + r == stepRow) {
         continue;  // the step is flat and walkable
       }
       world->kind[i] = CELL_HOUSE;
-      if (t->roof) {
-        world->interior[i] = (Uint16)GID_TILES(t->interiorCol + c, t->interiorRow + t->interiorRows[r]);
+      if (p.roof) {
+        int inside = p.small ? PIECE_SMALL_ROOM(c, r) : large_piece(&p, c, r, true, window);
+        world->interior[i] = (Uint16)GID_HOUSE(p.style, inside);
       }
     }
   }
-  add_walls(world, t, hx, hy);
+  add_walls(world, &p, hx, hy);
   return true;
 }
 
@@ -490,6 +504,10 @@ static void make_villages(Gen *g) {
     Village *v = &world->villages[index];
     *v = (Village){.centerX = cx, .centerY = cy, .radius = 12, .firstHouse = world->numHouses};
     name_village(g, v);
+    // each village has its own few house styles
+    for (int k = 0; k < (int)SDL_arraysize(v->styles); k++) {
+      v->styles[k] = rnd(g, NUM_HOUSE_STYLES);
+    }
 
     // plaza
     int pw = 4 + rnd(g, 3), ph = 4;

@@ -52,6 +52,129 @@ static bool add_tileset(Atlas *atlas, Engine *engine, const char *file, int firs
   return true;
 }
 
+// ---------------------------------------------------------------- houses
+
+// Change of colour applied to one material, keeping the shading.
+typedef struct Tint {
+  float hue;  // degrees, negative keeps the original hue
+  float sat;  // saturation multiplier
+  float val;  // brightness multiplier
+} Tint;
+
+#define KEEP {-1, 1, 1}
+static const Tint ROOF_RED = KEEP, ROOF_SLATE = {212, 0.55f, 0.9f}, ROOF_MOSS = {155, 0.5f, 0.68f},
+                  ROOF_THATCH = {45, 0.68f, 1.06f}, ROOF_CHARCOAL = {-1, 0.12f, 0.75f},
+                  ROOF_TERRACOTTA = {25, 0.8f, 0.75f};
+static const Tint WALL_BEIGE = KEEP, WALL_PLASTER = {-1, 0.25f, 1.08f}, WALL_STONE = {40, 0.12f, 0.85f},
+                  WALL_TIMBER = {28, 0.6f, 0.75f};
+static const Tint FLOOR_BRICK = KEEP, FLOOR_WOOD = {30, 0.6f, 0.8f}, FLOOR_STONE = {-1, 0.15f, 0.85f};
+#undef KEEP
+
+typedef struct HouseStyle {
+  Tint roof, wall, floor;
+} HouseStyle;
+
+static const HouseStyle STYLES[NUM_HOUSE_STYLES] = {
+    {ROOF_RED, WALL_BEIGE, FLOOR_BRICK},        {ROOF_RED, WALL_PLASTER, FLOOR_WOOD},
+    {ROOF_SLATE, WALL_PLASTER, FLOOR_STONE},    {ROOF_SLATE, WALL_STONE, FLOOR_STONE},
+    {ROOF_MOSS, WALL_BEIGE, FLOOR_WOOD},        {ROOF_MOSS, WALL_TIMBER, FLOOR_WOOD},
+    {ROOF_THATCH, WALL_TIMBER, FLOOR_WOOD},     {ROOF_THATCH, WALL_BEIGE, FLOOR_BRICK},
+    {ROOF_CHARCOAL, WALL_STONE, FLOOR_STONE},   {ROOF_CHARCOAL, WALL_PLASTER, FLOOR_BRICK},
+    {ROOF_TERRACOTTA, WALL_BEIGE, FLOOR_BRICK}, {ROOF_TERRACOTTA, WALL_TIMBER, FLOOR_WOOD},
+};
+
+static void rgb_to_hsv(const Uint8 *p, float *h, float *s, float *v) {
+  float r = p[0] / 255.0f, g = p[1] / 255.0f, b = p[2] / 255.0f;
+  float max = SDL_max(r, SDL_max(g, b)), min = SDL_min(r, SDL_min(g, b)), d = max - min;
+  *v = max;
+  *s = max > 0 ? d / max : 0;
+  if (d == 0) *h = 0;
+  else if (max == r) *h = 60 * SDL_fmodf((g - b) / d + 6, 6);
+  else if (max == g) *h = 60 * ((b - r) / d + 2);
+  else *h = 60 * ((r - g) / d + 4);
+}
+
+static void hsv_to_rgb(float h, float s, float v, Uint8 *p) {
+  float c = v * s, x = c * (1 - SDL_fabsf(SDL_fmodf(h / 60, 2) - 1)), m = v - c;
+  float r = 0, g = 0, b = 0;
+  if (h < 60) r = c, g = x;
+  else if (h < 120) r = x, g = c;
+  else if (h < 180) g = c, b = x;
+  else if (h < 240) g = x, b = c;
+  else if (h < 300) r = x, b = c;
+  else r = c, b = x;
+  p[0] = (Uint8)SDL_clamp((r + m) * 255 + 0.5f, 0, 255);
+  p[1] = (Uint8)SDL_clamp((g + m) * 255 + 0.5f, 0, 255);
+  p[2] = (Uint8)SDL_clamp((b + m) * 255 + 0.5f, 0, 255);
+}
+
+static void apply_tint(Uint8 *p, Tint t) {
+  float h, s, v;
+  rgb_to_hsv(p, &h, &s, &v);
+  hsv_to_rgb(t.hue >= 0 ? t.hue : h, SDL_min(1.0f, s * t.sat), SDL_min(1.0f, v * t.val), p);
+}
+
+// Copy a tile, recolouring the yellow walls with `wall` and the red/brown
+// roof or floor with `other`. Outlines and greys are kept.
+static void tint_tile(SDL_Surface *dst, int dx, int dy, const SDL_Surface *src, int sx, int sy, Tint wall, Tint other) {
+  for (int y = 0; y < TILE_SIZE; y++) {
+    const Uint8 *in = (const Uint8 *)src->pixels + (sy + y) * src->pitch + sx * 4;
+    Uint8 *out = (Uint8 *)dst->pixels + (dy + y) * dst->pitch + dx * 4;
+    for (int x = 0; x < TILE_SIZE; x++, in += 4, out += 4) {
+      SDL_memcpy(out, in, 4);
+      float h, s, v;
+      rgb_to_hsv(in, &h, &s, &v);
+      if (in[3] == 0 || v < 0.26f || s < 0.15f) {
+        continue;
+      }
+      apply_tint(out, h >= 40 && h <= 70 ? wall : other);
+    }
+  }
+}
+
+static bool build_houses(Atlas *atlas, Engine *engine) {
+  SDL_Surface *src = engine_load_surface("tiles.png");
+  SDL_Surface *sheet = SDL_CreateSurface(HOUSE_PIECES * TILE_SIZE, NUM_HOUSE_STYLES * TILE_SIZE,
+                                         SDL_PIXELFORMAT_RGBA32);
+  bool ok = src && sheet;
+  if (ok) {
+    clear_grass(src);
+    for (int style = 0; style < NUM_HOUSE_STYLES; style++) {
+      const HouseStyle *st = &STYLES[style];
+      int y = style * TILE_SIZE;
+      for (int piece = 0; piece < HOUSE_PIECES; piece++) {
+        // where each piece comes from in tiles.png
+        int col, row;
+        bool roof = piece < PIECE_ROOM(0, 0);
+        if (piece < PIECE_SMALL_ROOF(0, 0)) col = 1 + piece % 4, row = 7 + piece / 4;
+        else if (piece < PIECE_ROOM(0, 0)) col = 13 + (piece - 12) % 3, row = 1 + (piece - 12) / 3;
+        else if (piece < PIECE_SMALL_ROOM(0, 0)) col = 1 + (piece - 21) % 4, row = 1 + (piece - 21) / 4;
+        else col = 10 + (piece - 37) % 3, row = 1 + (piece - 37) / 3;
+        tint_tile(sheet, piece * TILE_SIZE, y, src, col * TILE_SIZE, row * TILE_SIZE,
+                  st->wall, roof ? st->roof : st->floor);
+      }
+      Uint8 red[4] = {219, 78, 29, 255};
+      apply_tint(red, st->roof);
+      atlas->roofColors[style] = (SDL_Color){red[0], red[1], red[2], 255};
+    }
+    SDL_Texture *texture = engine_texture_from_surface(engine, sheet);
+    ok = texture != NULL;
+    for (int style = 0; ok && style < NUM_HOUSE_STYLES; style++) {
+      for (int piece = 0; piece < HOUSE_PIECES; piece++) {
+        atlas->tiles[GID_HOUSE(style, piece)] = (Sprite){
+            .texture = texture,
+            .source = {(float)(piece * TILE_SIZE), (float)(style * TILE_SIZE), TILE_SIZE, TILE_SIZE},
+        };
+      }
+    }
+  }
+  SDL_DestroySurface(sheet);
+  SDL_DestroySurface(src);
+  return ok;
+}
+
+// ---------------------------------------------------------------- characters
+
 static bool load_sheet(CharacterSheet *sheet, SDL_Texture *texture) {
   SDL_Rect cell = {0, 0, CHARACTER_CELL, CHARACTER_CELL};
   bool ok = true;
@@ -149,6 +272,7 @@ bool atlas_load(Atlas *atlas, Engine *engine) {
   return add_tileset(atlas, engine, "ground.png", GID_GROUND(0), false) &&
          add_tileset(atlas, engine, "tiles.png", GID_TILES(0, 0), true) &&
          add_tileset(atlas, engine, "nature.png", GID_NATURE(0, 0), false) &&
+         build_houses(atlas, engine) &&
          load_characters(atlas, engine) &&
          load_pig(atlas, engine);
 }

@@ -24,6 +24,7 @@ typedef struct CharacterSheet {
 
 typedef struct Atlas {
   Sprite tiles[GID_COUNT];
+  SDL_Color roofColors[NUM_HOUSE_STYLES];  // for the minimap
   CharacterSheet player;
   CharacterSheet villagers[NUM_VILLAGER_LOOKS];
   Animation *pig;  // faces right
