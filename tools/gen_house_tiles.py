@@ -7,12 +7,17 @@ ridge) and thatched (rounded, straw). Both are drawn in the red roof palette
 of tiles.png and recoloured per house style at load time; the facade (wall
 band and door) is copied from the hipped roof of tiles.png.
 
-  8 x 5 tiles: cols 0-3 gable, cols 4-7 thatch
+  8 x 6 tiles: cols 0-3 gable, cols 4-7 thatch
   columns: left end, middle with door, middle, right end
   rows:    top, ridge in the middle, ridge at the bottom, ridge at the top,
            bottom (eave and facade)
+  row 5:   facade with a window for the gable (col 0) and the thatch (col 4),
+           and the door copied from the cottage for the hipped roof (col 1)
+           and for the interior (col 2)
 
 A house 3 rows deep uses rows 0, 1, 4; 4 rows deep uses rows 0, 2, 3, 4.
+The large house in tiles.png only has a window in its facade: the door,
+which has a landing in front of it, comes from the cottage.
 
 furniture.png: 6 x 3 tiles on a transparent background, see FURNITURE.
 
@@ -46,20 +51,44 @@ R_OUTLINE = (35, 35, 35, 255)
 GRASS = {(112, 200, 64), (103, 185, 59)}
 
 
-def load_facade():
-    """Bottom part of the hipped roof's last row (art rows 17-23), per column."""
+def load_tile(col, row):
+    """A tile of tiles.png at art resolution, grass made transparent."""
     tiles = Image.open(ROOT / "assets" / "tiles.png").convert("RGBA")
-    out = []
-    for col in range(4):
-        cell = tiles.crop(((1 + col) * 48, 9 * 48, (2 + col) * 48, 10 * 48))
-        c = Canvas(ART, ART)
-        for y in range(17, ART):
-            for x in range(ART):
-                p = cell.getpixel((x * 2, y * 2))
-                if p[:3] not in GRASS:
-                    c.set(x, y, p)
-        out.append(c)
+    cell = tiles.crop((col * 48, row * 48, col * 48 + 48, row * 48 + 48))
+    c = Canvas(ART, ART)
+    for y in range(ART):
+        for x in range(ART):
+            p = cell.getpixel((x * 2, y * 2))
+            if p[:3] not in GRASS:
+                c.set(x, y, p)
+    return c
+
+
+def paste_region(dst, src, x0, y0, x1, y1):
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            dst.set(x, y, src.get(x, y))
+
+
+def with_door(base, door_tile, y0):
+    """Replace the middle of a facade with the cottage door."""
+    out = base.crop(0, 0, ART, ART)
+    paste_region(out, door_tile, 4, y0, 19, ART)
     return out
+
+
+def load_facade():
+    """Facades under the roof (art rows 17-23): left, door, middle, right,
+    and the window of the original large house."""
+    cols = [load_tile(1 + col, 9) for col in range(4)]
+    out = []
+    for tile in cols:
+        c = Canvas(ART, ART)
+        paste_region(c, tile, 0, 17, ART, ART)
+        out.append(c)
+    window = out[1]
+    out[1] = with_door(out[2], load_tile(14, 2), 17)
+    return out, window
 
 
 def course_noise(x, y, salt):
@@ -162,6 +191,19 @@ def thatch(rows):
     return c, eave
 
 
+def bottom_piece(roof, eave, r, col, facade):
+    """Last row of a roof over a facade."""
+    base = Canvas(ART, ART)
+    base.blit(facade, 0, 0)
+    base.blit(roof.crop(col * ART, r * ART, ART, ART), 0, 0)
+    # the facade shows below the eave
+    for y in range(eave - r * ART + 2, ART):
+        for x in range(ART):
+            if facade.get(x, y)[3]:
+                base.set(x, y, facade.get(x, y))
+    return base
+
+
 def slice_roof(draw, facade):
     """Return the 4 x 5 pieces of a roof shape."""
     pieces = {}
@@ -171,18 +213,10 @@ def slice_roof(draw, facade):
             # columns: left end, middle with door, middle, right end; both
             # middles are the same roof, the door is in the facade
             for col in range(4):
-                tile = roof.crop(col * ART, r * ART, ART, ART)
                 if piece_row == 4:
-                    base = Canvas(ART, ART)
-                    base.blit(facade[col], 0, 0)
-                    base.blit(tile, 0, 0)
-                    # the facade shows below the eave
-                    for y in range(eave - r * ART + 2, ART):
-                        for x in range(ART):
-                            if facade[col].get(x, y)[3]:
-                                base.set(x, y, facade[col].get(x, y))
-                    tile = base
-                pieces[(col, piece_row)] = tile
+                    pieces[(col, piece_row)] = bottom_piece(roof, eave, r, col, facade[col])
+                else:
+                    pieces[(col, piece_row)] = roof.crop(col * ART, r * ART, ART, ART)
     return pieces
 
 
@@ -364,11 +398,16 @@ def save(canvas, name):
 
 
 def main():
-    facade = load_facade()
-    roofs = Canvas(8 * ART, 5 * ART)
+    facade, window = load_facade()
+    roofs = Canvas(8 * ART, 6 * ART)
     for shape, draw in enumerate((gable, thatch)):
         for (col, row), tile in slice_roof(draw, facade).items():
             roofs.blit(tile, (shape * 4 + col) * ART, row * ART, transparent=False)
+        roof, eave = draw(3)
+        roofs.blit(bottom_piece(roof, eave, 2, 2, window), shape * 4 * ART, 5 * ART, transparent=False)
+    # doors for the hipped roof and the interior of tiles.png
+    roofs.blit(with_door(load_tile(3, 9), load_tile(14, 2), 17), 1 * ART, 5 * ART, transparent=False)
+    roofs.blit(with_door(load_tile(3, 4), load_tile(11, 2), 16), 2 * ART, 5 * ART, transparent=False)
     save(roofs, "roofs.png")
 
     furniture = Canvas(6 * ART, 3 * ART)

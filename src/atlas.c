@@ -154,11 +154,19 @@ static bool build_houses(Atlas *atlas, Engine *engine) {
         else if (piece < PIECE_ROOM(0, 0)) col = 13 + (piece - 12) % 3, row = 1 + (piece - 12) / 3, other = st->roof;
         else if (piece < PIECE_SMALL_ROOM(0, 0)) col = 1 + (piece - 21) % 4, row = 1 + (piece - 21) / 4;
         else if (piece < PIECE_SHAPED(0, 0, 0)) col = 10 + (piece - 37) % 3, row = 1 + (piece - 37) / 3;
-        else {
+        else if (piece < PIECE_SHAPED_WINDOW(0)) {
           int k = piece - PIECE_SHAPED(0, 0, 0), shape = k / 20;
           col = shape * 4 + k % 4, row = (k % 20) / 4;
           from = shaped;
           other = shape == 1 ? st->thatch : st->roof;
+        } else {
+          // the extra facades on the last row of roofs.png
+          from = shaped;
+          row = 5;
+          if (piece == PIECE_SHAPED_WINDOW(0)) col = 0, other = st->roof;
+          else if (piece == PIECE_SHAPED_WINDOW(1)) col = 4, other = st->thatch;
+          else if (piece == PIECE_ROOF_DOOR) col = 1, other = st->roof;
+          else col = 2;
         }
         tint_tile(sheet, piece * TILE_SIZE, y, from, col * TILE_SIZE, row * TILE_SIZE, st->wall, other);
       }

@@ -26,7 +26,7 @@
 // Pieces of a house style. Large houses are assembled from the corners,
 // edges and middles of a 4-wide piece set; small houses are used as is.
 #define NUM_HOUSE_STYLES 12
-#define HOUSE_PIECES 86
+#define HOUSE_PIECES 90
 #define PIECE_ROOF(c, r) ((r) * 4 + (c))              // large roof, 4 x 3
 #define PIECE_SMALL_ROOF(c, r) (12 + (r) * 3 + (c))   // small roof, 3 x 3, row 2 is the door step
 #define PIECE_ROOM(c, r) (21 + (r) * 4 + (c))         // large interior, 4 x 4
@@ -34,13 +34,21 @@
 // gabled (shape 0) and thatched (shape 1) roofs, 4 x 5 each: columns left,
 // door, middle, right; rows top, ridge middle, ridge bottom, ridge top, eave
 #define PIECE_SHAPED(shape, c, r) (46 + (shape) * 20 + (r) * 4 + (c))
+// the facade has a door with a landing in the door column and sometimes a
+// window in the others; the original large house only has the window
+#define PIECE_SHAPED_WINDOW(shape) (86 + (shape))
+#define PIECE_ROOF_DOOR 88
+#define PIECE_ROOM_DOOR 89
 #define GID_HOUSE(style, piece) (GID_HOUSE_BASE + (style) * HOUSE_PIECES + (piece))
 #define GID_IS_HOUSE(gid) ((gid) >= GID_HOUSE_BASE && (gid) < GID_HOUSE_BASE + NUM_HOUSE_STYLES * HOUSE_PIECES)
 #define HOUSE_PIECE(gid) (((gid) - GID_HOUSE_BASE) % HOUSE_PIECES)
 // door steps and interiors are seen from above: drawn flat
 #define GID_IS_FLAT_HOUSE(gid)                                               \
-  (GID_IS_HOUSE(gid) && HOUSE_PIECE(gid) >= PIECE_SMALL_ROOF(0, 2) &&        \
-   HOUSE_PIECE(gid) < PIECE_SHAPED(0, 0, 0))
+  (GID_IS_HOUSE(gid) && ((HOUSE_PIECE(gid) >= PIECE_SMALL_ROOF(0, 2) &&      \
+                          HOUSE_PIECE(gid) < PIECE_SHAPED(0, 0, 0)) ||        \
+                         HOUSE_PIECE(gid) == PIECE_ROOM_DOOR))
+// the landing in front of a door
+#define PIECE_LANDING PIECE_SMALL_ROOF(1, 2)
 
 typedef enum Furniture {
   FURN_SHELF,

@@ -433,7 +433,7 @@ static HousePlan plan_house(Gen *g, const Village *v) {
   HousePlan p = {.style = v->styles[rnd(g, (int)SDL_arraysize(v->styles))], .roof = rndf(g) > 0.08f};
   // most houses of a village share its roof shape
   p.shape = rndf(g) < 0.6f ? v->roofShape : rnd(g, 3);
-  if (rndf(g) < 0.3f) {
+  if (rndf(g) < 0.12f) {
     p.shape = 0;  // only the hipped roof exists for cottages
     // cottage, measured from the small house art
     p.small = true;
@@ -442,35 +442,43 @@ static HousePlan plan_house(Gen *g, const Village *v) {
     p.top = 19, p.left = 15, p.right = 16, p.bottom = 14;
     p.door0 = 58, p.door1 = 83;
   } else {
-    static const int WIDTHS[] = {3, 4, 4, 4, 5, 5, 6};
+    static const int WIDTHS[] = {4, 4, 5, 5, 5, 6};
     p.w = WIDTHS[rnd(g, (int)SDL_arraysize(WIDTHS))];
-    p.h = p.w >= 4 && rndf(g) < 0.4f ? 4 : 3;
+    p.h = rndf(g) < (p.w >= 5 ? 0.55f : 0.35f) ? 4 : 3;
     p.doorCol = 1 + rnd(g, p.w - 2);
     p.bodyW = p.w * TILE_SIZE, p.bodyH = p.h * TILE_SIZE;
     p.top = 18, p.left = 12, p.right = 18, p.bottom = 14;
-    p.door0 = p.doorCol * TILE_SIZE + 12, p.door1 = p.doorCol * TILE_SIZE + 33;
+    // the opening of the cottage door, copied into the large facades
+    p.door0 = p.doorCol * TILE_SIZE + 10, p.door1 = p.doorCol * TILE_SIZE + 35;
   }
   return p;
 }
 
-// Which piece of the large house set goes in cell (c, r).
-static int large_piece(const HousePlan *p, int c, int r, bool room, bool window) {
+// Which piece of the large house set goes in cell (c, r). backWindow and
+// frontWindow tell whether that column has windows in the back or front wall.
+static int large_piece(const HousePlan *p, int c, int r, bool room, bool backWindow, bool frontWindow) {
   int last = p->w - 1, bottom = p->h - 1;
   int col = c == 0 ? 0 : (c == last ? 3 : 2);
+  bool middle = col == 2;
   bool door = r == bottom && c == p->doorCol;
+  bool window = r == bottom && middle && frontWindow && !door;
   if (!room && p->shape == 0) {
-    return PIECE_ROOF(door ? 1 : col, r == 0 ? 0 : (r == bottom ? 2 : 1));
+    if (door) return PIECE_ROOF_DOOR;
+    return PIECE_ROOF(window ? 1 : col, r == 0 ? 0 : (r == bottom ? 2 : 1));
   }
   if (!room) {
     // the ridge runs along the middle: inside row 1 for 3 deep houses,
     // between rows 1 and 2 for 4 deep ones
     static const int ROWS3[] = {0, 1, 4}, ROWS4[] = {0, 2, 3, 4};
+    if (window) return PIECE_SHAPED_WINDOW(p->shape - 1);
     int row = p->h == 3 ? ROWS3[r] : ROWS4[r];
     return PIECE_SHAPED(p->shape - 1, door ? 1 : col, row);
   }
-  // inside: window notches in the back wall, side windows every other row
+  // inside: window notches in the walls, side windows every other row
+  if (door) return PIECE_ROOM_DOOR;
   int row = r == 0 ? 0 : (r == bottom ? 3 : (r % 2 ? 1 : 2));
-  return PIECE_ROOM(door || (r == 0 && window && col == 2) ? 1 : col, row);
+  bool notch = middle && ((r == 0 && backWindow) || window);
+  return PIECE_ROOM(notch ? 1 : col, row);
 }
 
 static bool try_house(Gen *g, Village *v, int villageIndex) {
@@ -542,11 +550,11 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
   }
 
   for (int c = 0; c < p.w; c++) {
-    bool window = rndf(g) < 0.4f;
+    bool backWindow = rndf(g) < 0.4f, frontWindow = rndf(g) < 0.5f;
     for (int r = 0; r < p.h; r++) {
       int i = (hy + r) * g->w + hx + c;
       int outside = p.small ? (p.roof ? PIECE_SMALL_ROOF(c, r) : PIECE_SMALL_ROOM(c, r))
-                            : large_piece(&p, c, r, !p.roof, window);
+                            : large_piece(&p, c, r, !p.roof, backWindow, frontWindow);
       world->top[i] = (Uint16)GID_HOUSE(p.style, outside);
       world->houseAt[i] = (Sint16)index;
       if (hy + r == stepRow) {
@@ -554,10 +562,14 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
       }
       world->kind[i] = CELL_HOUSE;
       if (p.roof) {
-        int inside = p.small ? PIECE_SMALL_ROOM(c, r) : large_piece(&p, c, r, true, window);
+        int inside = p.small ? PIECE_SMALL_ROOM(c, r) : large_piece(&p, c, r, true, backWindow, frontWindow);
         world->interior[i] = (Uint16)GID_HOUSE(p.style, inside);
       }
     }
+  }
+  if (!p.small) {
+    // landing in front of the door, over the start of the footpath
+    world->top[doorY * g->w + doorX] = (Uint16)GID_HOUSE(p.style, PIECE_LANDING);
   }
   add_walls(world, &p, hx, hy);
   furnish(g, &p, hx, hy, fireCol);

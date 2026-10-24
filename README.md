@@ -18,10 +18,11 @@ roads, and villagers going about their day.
 - **Villagers** with different shirt colours live in the houses. They come
   out, walk the roads to the plaza, visit neighbours, sometimes travel to
   another village, and go back inside. Pigs potter around the villages.
-- **Varied houses**: cottages and houses from 3 to 6 tiles wide, assembled
+- **Varied houses**: a few cottages and houses from 4 to 6 tiles wide, assembled
   from corner, edge and middle pieces, with hipped, gabled or thatched roofs.
   12 colour styles (roof, walls, floor) stay close to the original palette;
-  each village has its own styles and a favourite roof shape.
+  each village has its own styles and a favourite roof shape. Entrances have
+  a door and a stone landing; other columns of the facade get windows.
 - **Furnished interiors**: shelves, cupboards and beds against the back wall,
   chests and barrels along the sides, a table with chairs, a rug by the door,
   and a fireplace under the chimney, whose smoke rises from the roof.
