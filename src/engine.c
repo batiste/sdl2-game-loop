@@ -30,8 +30,8 @@ static void track(Engine *engine, ResourceKind kind, void *ptr) {
   engine->resources[engine->numResources++] = (struct EngineResource){kind, ptr};
 }
 
-bool engine_init(Engine *engine, const char *title, int width, int height) {
-  *engine = (Engine){.width = width, .height = height, .vsync = true};
+bool engine_init(Engine *engine, const char *title, int width, int height, int viewHeight) {
+  *engine = (Engine){.width = width, .height = height, .viewHeight = viewHeight, .scale = 1, .vsync = true};
 
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Unable to initialize SDL: %s", SDL_GetError());
@@ -46,10 +46,8 @@ bool engine_init(Engine *engine, const char *title, int width, int height) {
   }
   SDL_Log("Renderer: %s", SDL_GetRendererName(engine->renderer));
 
-  // Render at a fixed logical size, scaled to the window (and to Retina displays).
-  SDL_SetRenderLogicalPresentation(engine->renderer, width, height,
-                                   SDL_LOGICAL_PRESENTATION_LETTERBOX);
   SDL_SetDefaultTextureScaleMode(engine->renderer, SDL_SCALEMODE_PIXELART);
+  engine_fit_view(engine);
   engine_set_vsync(engine, true);
 
   if (!TTF_Init()) {
@@ -93,6 +91,27 @@ void engine_shutdown(Engine *engine) {
     SDL_DestroyWindow(engine->window);
   }
   *engine = (Engine){0};
+}
+
+void engine_fit_view(Engine *engine) {
+  int pw = 0, ph = 0;
+  if (!SDL_GetWindowSizeInPixels(engine->window, &pw, &ph) || pw <= 0 || ph <= 0) {
+    return;
+  }
+  // a whole scale keeps the pixel art crisp; pick the one that gets the view
+  // closest to the wanted height, and use the whole width of the window
+  engine->scale = SDL_max(1, (int)SDL_roundf((float)ph / (float)engine->viewHeight));
+  engine->width = pw / engine->scale;
+  engine->height = ph / engine->scale;
+  SDL_SetRenderLogicalPresentation(engine->renderer, engine->width, engine->height,
+                                   SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+}
+
+void engine_toggle_fullscreen(Engine *engine) {
+  bool fullscreen = (SDL_GetWindowFlags(engine->window) & SDL_WINDOW_FULLSCREEN) != 0;
+  // desktop fullscreen: the display's own resolution, no mode switch
+  SDL_SetWindowFullscreenMode(engine->window, NULL);
+  SDL_SetWindowFullscreen(engine->window, !fullscreen);
 }
 
 void engine_set_vsync(Engine *engine, bool enabled) {

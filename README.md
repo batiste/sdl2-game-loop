@@ -47,8 +47,8 @@ waves, protect the villagers and slay the evil lord.
 - Village name banner when you arrive, greetings from nearby villagers, minimap
 - Fixed-timestep simulation (50 Hz) with interpolated rendering; same game
   speed with vsync on or an uncapped frame rate
-- Fixed logical resolution (800×600), letterboxed into a resizable,
-  HiDPI-aware window with crisp pixel-art scaling
+- The view follows the window's aspect ratio (resizable, fullscreen with F),
+  scaled by a whole factor so the pixel art stays crisp, HiDPI aware
 
 ## Controls
 
@@ -60,6 +60,7 @@ waves, protect the villagers and slay the evil lord.
 | R                   | Generate a new world            |
 | M                   | Toggle the minimap              |
 | N                   | Pause / resume the music        |
+| F or F11            | Toggle fullscreen               |
 | C                   | Toggle vsync / uncapped FPS     |
 | Esc                 | Quit                            |
 

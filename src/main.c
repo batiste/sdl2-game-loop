@@ -21,8 +21,9 @@
 #include "npc.h"
 #include "world.h"
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
+#define WINDOW_WIDTH 1280  // initial window size, in points
+#define WINDOW_HEIGHT 800
+#define VIEW_HEIGHT 600    // the view is about this tall, as wide as the window allows
 #define WORLD_SIZE 160  // cells
 
 #define TICK_NS SDL_MS_TO_NS(20)  // 50 physics ticks per second
@@ -934,7 +935,7 @@ static void render_hud(Game *game, Uint64 now) {
   draw_text(game, &game->villagersText, game->smallFont, 12, 58, "Villagers %d of %d", alive, villagers);
 
   draw_text(game, &game->infoText, game->smallFont, 12, (float)game->engine.height - 26,
-            "Seed %" SDL_PRIu64 "   R: new world   M: map   N: music   C: vsync", game->seed);
+            "Seed %" SDL_PRIu64 "   R: new world   M: map   N: music   F: fullscreen   C: vsync", game->seed);
   draw_text(game, &game->fpsText, game->smallFont, -12, (float)game->engine.height - 26, "%d fps%s", game->fps,
             game->engine.vsync ? "" : ", uncapped");
 
@@ -1080,7 +1081,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   }
   *appstate = game;
 
-  if (!engine_init(&game->engine, "The invasion of the evil lords", SCREEN_WIDTH, SCREEN_HEIGHT)) {
+  if (!engine_init(&game->engine, "The invasion of the evil lords", WINDOW_WIDTH, WINDOW_HEIGHT, VIEW_HEIGHT)) {
     return SDL_APP_FAILURE;
   }
 
@@ -1139,6 +1140,15 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   Game *game = appstate;
   if (event->type == SDL_EVENT_QUIT) {
     return SDL_APP_SUCCESS;
+  }
+  if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+    engine_fit_view(&game->engine);
+    return SDL_APP_CONTINUE;
+  }
+  if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
+      (event->key.scancode == SDL_SCANCODE_F || event->key.scancode == SDL_SCANCODE_F11)) {
+    engine_toggle_fullscreen(&game->engine);
+    return SDL_APP_CONTINUE;
   }
   if (event->type != SDL_EVENT_KEY_DOWN || event->key.repeat) {
     return SDL_APP_CONTINUE;

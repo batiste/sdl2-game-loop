@@ -19,9 +19,12 @@ struct Engine {
   SDL_Renderer *renderer;
   MIX_Mixer *mixer;
 
-  // logical resolution, independent of window size and pixel density
+  // logical resolution: the window in whole multiples of art pixels, about
+  // viewHeight tall, with the window's aspect ratio
   int width;
   int height;
+  int scale;  // screen pixels per logical pixel
+  int viewHeight;
   bool vsync;
 
   // every loaded asset, released by engine_shutdown()
@@ -30,10 +33,16 @@ struct Engine {
   int capResources;
 };
 
-bool engine_init(Engine *engine, const char *title, int width, int height);
+// width and height: initial window size; viewHeight: about how tall the view
+// should be, in logical pixels, whatever the window.
+bool engine_init(Engine *engine, const char *title, int width, int height, int viewHeight);
 void engine_shutdown(Engine *engine);
 
 void engine_set_vsync(Engine *engine, bool enabled);
+void engine_toggle_fullscreen(Engine *engine);
+
+// Adapt the logical resolution to the window; call when its size changes.
+void engine_fit_view(Engine *engine);
 
 // Resolve a path relative to the assets directory. Caller must SDL_free() it.
 char *engine_asset_path(const char *relative);
