@@ -172,11 +172,15 @@ MIX_Audio *engine_load_audio(Engine *engine, const char *relative, bool predecod
 }
 
 SDL_Texture *engine_render_text(Engine *engine, TTF_Font *font, const char *text) {
+  return engine_render_text_wrapped(engine, font, text, 0);
+}
+
+SDL_Texture *engine_render_text_wrapped(Engine *engine, TTF_Font *font, const char *text, int wrapWidth) {
   const SDL_Color black = {0, 0, 0, 255};
   const SDL_Color white = {255, 255, 255, 255};
 
-  SDL_Surface *shadow = TTF_RenderText_Solid(font, text, 0, white);
-  SDL_Surface *front = TTF_RenderText_Solid(font, text, 0, black);
+  SDL_Surface *shadow = TTF_RenderText_Solid_Wrapped(font, text, 0, white, wrapWidth);
+  SDL_Surface *front = TTF_RenderText_Solid_Wrapped(font, text, 0, black, wrapWidth);
   SDL_Surface *surface = NULL;
   SDL_Texture *texture = NULL;
 

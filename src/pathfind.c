@@ -157,3 +157,40 @@ done:
   SDL_free(parent);
   return result;
 }
+
+bool path_distance_field(int w, int h, int goalX, int goalY, PathCostFn cost, void *ctx, float *out) {
+  for (int i = 0; i < w * h; i++) {
+    out[i] = FLT_MAX;
+  }
+  if (goalX < 0 || goalY < 0 || goalX >= w || goalY >= h) {
+    return false;
+  }
+  Heap heap = {0};
+  int goal = goalY * w + goalX;
+  out[goal] = 0;
+  bool ok = heap_push(&heap, 0, goal);
+  // Dijkstra from the goal: a cell is settled through the neighbour it
+  // would step onto on its way there
+  while (ok && heap.count > 0) {
+    HeapNode node = heap_pop(&heap);
+    int cell = node.state;
+    if (node.f > out[cell]) {
+      continue;  // stale heap entry
+    }
+    int x = cell % w, y = cell / w;
+    for (int d = 0; d < 4; d++) {
+      int nx = x + DX[d], ny = y + DY[d];
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+        continue;
+      }
+      float step = cost(ctx, nx, ny, x, y);
+      int next = ny * w + nx;
+      if (step >= 0 && out[cell] + step < out[next]) {
+        out[next] = out[cell] + step;
+        ok = heap_push(&heap, out[next], next);
+      }
+    }
+  }
+  SDL_free(heap.nodes);
+  return ok;
+}

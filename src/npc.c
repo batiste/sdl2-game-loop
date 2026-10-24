@@ -12,9 +12,13 @@
 
 #include "npc.h"
 
+#include <float.h>
+
 #define MAX_PATH 1024
-#define VILLAGER_SPEED 2.0f  // pixels per tick
+#define VILLAGER_SPEED 1.6f  // pixels per tick
+#define RUN_SPEED 2.8f
 #define PIG_SPEED 1.0f
+#define VILLAGER_HP 3
 #define TICKS_PER_SECOND 50
 
 static int rnd(Npc *npc, int n) {
@@ -73,8 +77,24 @@ static bool spot_in_house(Npc *npc, const World *world, const House *house, int 
   return count > 0;
 }
 
+// Closest house to the villager, for running to shelter.
+static int nearest_house(const Npc *npc, const World *world) {
+  int best = npc->home;
+  float bestDist = FLT_MAX;
+  for (int h = 0; h < world->numHouses; h++) {
+    const House *house = &world->houses[h];
+    float dx = world_cell_feet_x(house->doorX) - npc->x, dy = world_cell_feet_y(house->doorY) - npc->y;
+    if (dx * dx + dy * dy < bestDist) {
+      bestDist = dx * dx + dy * dy;
+      best = h;
+    }
+  }
+  return best;
+}
+
 static void choose_goal(Npc *npc, const World *world) {
   npc->house = -1;
+  npc->running = false;
   const Village *village = &world->villages[npc->village];
   int gx = 0, gy = 0;
   bool ok = false;
@@ -90,7 +110,10 @@ static void choose_goal(Npc *npc, const World *world) {
     ok = random_cell_near(npc, world, cx, cy, 3, &gx, &gy);
   } else {
     float r = SDL_randf_r(&npc->rng);
-    if (r < 0.35f) {
+    if (npc->fear > 0) {
+      npc->house = nearest_house(npc, world);
+      npc->running = true;
+    } else if (r < 0.35f) {
       // hang around the plaza
       ok = random_cell_near(npc, world, village->centerX, village->centerY, 2, &gx, &gy);
     } else if (r < 0.6f && village->numHouses > 0) {
@@ -149,16 +172,30 @@ static bool step_towards(Npc *npc, float speed) {
 }
 
 static void update_npc(Npc *npc, const World *world) {
-  float speed = npc->kind == NPC_PIG ? PIG_SPEED : VILLAGER_SPEED;
+  if (npc->dead) {
+    return;
+  }
+  float speed = npc->kind == NPC_PIG ? PIG_SPEED : (npc->running ? RUN_SPEED : VILLAGER_SPEED);
   npc->prevX = npc->x;
   npc->prevY = npc->y;
   npc->moving = false;
+  npc->fear = SDL_max(0, npc->fear - 1);
+  npc->hurtTimer = SDL_max(0, npc->hurtTimer - 1);
 
   switch (npc->state) {
     case NPC_IDLE:
-    case NPC_INSIDE:
       if (--npc->timer <= 0) {
         choose_goal(npc, world);
+      }
+      break;
+
+    case NPC_INSIDE:
+      if (--npc->timer <= 0) {
+        if (npc->fear > 0) {
+          npc->timer = npc->fear;  // wait for the danger to pass
+        } else {
+          choose_goal(npc, world);
+        }
       }
       break;
 
@@ -190,7 +227,7 @@ static Npc *add_npc(Npcs *npcs, NpcKind kind, int village, Uint64 seed) {
   }
   npcs->count++;
   *npc = (Npc){.kind = kind, .village = village, .home = -1, .house = -1,
-               .path = path, .rng = seed, .dir = DIR_DOWN};
+               .path = path, .rng = seed, .dir = DIR_DOWN, .hp = VILLAGER_HP};
   return npc;
 }
 
@@ -260,6 +297,35 @@ void npcs_update(Npcs *npcs, const World *world) {
   for (int i = 0; i < npcs->count; i++) {
     update_npc(&npcs->items[i], world);
   }
+}
+
+void npcs_scare(Npcs *npcs, const World *world, float x, float y, float radius) {
+  for (int i = 0; i < npcs->count; i++) {
+    Npc *npc = &npcs->items[i];
+    float dx = npc->x - x, dy = npc->y - y;
+    if (npc->dead || npc->kind != NPC_VILLAGER || dx * dx + dy * dy > radius * radius) {
+      continue;
+    }
+    bool wasCalm = npc->fear == 0;
+    npc->fear = 10 * TICKS_PER_SECOND;
+    // run for it, unless already heading to shelter or inside
+    if (npc->state != NPC_INSIDE && (wasCalm || !npc->running)) {
+      choose_goal(npc, world);
+    }
+  }
+}
+
+bool npc_hurt(Npc *npc, int damage) {
+  if (npc->dead) {
+    return false;
+  }
+  npc->hp -= damage;
+  npc->hurtTimer = 10;
+  if (npc->hp <= 0) {
+    npc->dead = true;
+    return true;
+  }
+  return false;
 }
 
 const Sprite *npc_sprite(const Npc *npc, const Atlas *atlas, Uint64 tick, bool *flip, SDL_FPoint *offset) {

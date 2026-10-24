@@ -51,5 +51,7 @@ SDL_Texture *engine_texture_from_surface(Engine *engine, SDL_Surface *surface);
 
 // Render black text with a white drop shadow. Caller owns the texture.
 SDL_Texture *engine_render_text(Engine *engine, TTF_Font *font, const char *text);
+// Same, breaking lines at newlines and to fit wrapWidth pixels (0: newlines only).
+SDL_Texture *engine_render_text_wrapped(Engine *engine, TTF_Font *font, const char *text, int wrapWidth);
 
 #endif

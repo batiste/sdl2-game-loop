@@ -114,3 +114,23 @@ int world_find_path(const World *world, int sx, int sy, int gx, int gy, int *out
   };
   return path_find(&q, out, maxOut);
 }
+
+typedef struct FieldCtx {
+  const World *world;
+  int goalX, goalY;
+} FieldCtx;
+
+static float field_cost(void *ctx, int fx, int fy, int x, int y) {
+  const FieldCtx *f = ctx;
+  // the goal may be a cell a walker can't stand in the middle of (the hero
+  // squeezed next to a tree): stepping into it is always allowed
+  if (x == f->goalX && y == f->goalY) {
+    return world_walkable(f->world, fx, fy) ? 1.0f : -1.0f;
+  }
+  return walker_cost((void *)f->world, fx, fy, x, y);
+}
+
+bool world_distance_field(const World *world, int gx, int gy, float *out) {
+  FieldCtx ctx = {world, gx, gy};
+  return path_distance_field(world->width, world->height, gx, gy, field_cost, &ctx, out);
+}

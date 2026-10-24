@@ -16,6 +16,8 @@
 // rows of character.png
 typedef enum { DIR_DOWN, DIR_RIGHT, DIR_UP, DIR_LEFT, DIR_COUNT } Direction;
 
+typedef enum MonsterKind { MON_UNDERLING, MON_LORD, MON_BOSS, MON_SKELETON, MON_KINDS } MonsterKind;
+
 typedef struct CharacterSheet {
   Animation *walk[DIR_COUNT];
   Animation *swordRight;
@@ -28,6 +30,7 @@ typedef struct Atlas {
   CharacterSheet player;
   CharacterSheet villagers[NUM_VILLAGER_LOOKS];
   Animation *pig;  // faces right
+  Sprite monsters[MON_KINDS];  // one frame each, feet at the bottom centre
 } Atlas;
 
 bool atlas_load(Atlas *atlas, Engine *engine);

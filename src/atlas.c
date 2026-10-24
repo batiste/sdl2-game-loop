@@ -287,6 +287,50 @@ static bool load_pig(Atlas *atlas, Engine *engine) {
   return ok;
 }
 
+// The devils (from the original web game) sit in the top-left corner of
+// their sheets; the skeleton is a tile of tiles.png.
+static bool load_monsters(Atlas *atlas, Engine *engine) {
+  static const struct {
+    const char *file;
+    int w, h;
+  } DEVILS[] = {{"devil.png", 14, 28}, {"devil2.png", 16, 30}, {"devil3.png", 20, 34}};
+  for (int i = 0; i < 3; i++) {
+    SDL_Texture *texture = engine_load_texture(engine, DEVILS[i].file);
+    if (!texture) {
+      return false;
+    }
+    atlas->monsters[i] = (Sprite){texture, {0, 0, (float)DEVILS[i].w, (float)DEVILS[i].h}};
+  }
+
+  SDL_Surface *tiles = engine_load_surface("tiles.png");
+  SDL_Surface *cell = SDL_CreateSurface(TILE_SIZE, TILE_SIZE, SDL_PIXELFORMAT_RGBA32);
+  bool ok = tiles && cell;
+  if (ok) {
+    SDL_BlitSurface(tiles, &(SDL_Rect){17 * TILE_SIZE, 6 * TILE_SIZE, TILE_SIZE, TILE_SIZE}, cell, NULL);
+    clear_grass(cell);
+    // keep the skeleton only: drop the shading lines along the cell border
+    int x0 = TILE_SIZE, y0 = TILE_SIZE, x1 = 0, y1 = 0;
+    for (int y = 0; y < cell->h; y++) {
+      Uint8 *p = (Uint8 *)cell->pixels + y * cell->pitch;
+      for (int x = 0; x < cell->w; x++, p += 4) {
+        if (x >= TILE_SIZE - 6 || y >= TILE_SIZE - 6) {
+          p[3] = 0;
+        } else if (p[3]) {
+          x0 = SDL_min(x0, x), y0 = SDL_min(y0, y), x1 = SDL_max(x1, x + 1), y1 = SDL_max(y1, y + 1);
+        }
+      }
+    }
+    SDL_Texture *texture = engine_texture_from_surface(engine, cell);
+    ok = texture && x1 > x0;
+    if (ok) {
+      atlas->monsters[MON_SKELETON] = (Sprite){texture, {(float)x0, (float)y0, (float)(x1 - x0), (float)(y1 - y0)}};
+    }
+  }
+  SDL_DestroySurface(cell);
+  SDL_DestroySurface(tiles);
+  return ok;
+}
+
 bool atlas_load(Atlas *atlas, Engine *engine) {
   *atlas = (Atlas){0};
   return add_tileset(atlas, engine, "ground.png", GID_GROUND(0), false) &&
@@ -295,6 +339,7 @@ bool atlas_load(Atlas *atlas, Engine *engine) {
          build_houses(atlas, engine) &&
          add_tileset(atlas, engine, "furniture.png", GID_FURNITURE(0), false) &&
          load_characters(atlas, engine) &&
+         load_monsters(atlas, engine) &&
          load_pig(atlas, engine);
 }
 

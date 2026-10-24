@@ -1,10 +1,24 @@
-# Game skeleton
+# The invasion of the evil lords
 
-A small 2D game written in C with [SDL3](https://libsdl.org). Every world is
-procedurally generated from a seed: lakes, forests, villages connected by
-roads, and villagers going about their day.
+A small 2D action game written in C with [SDL3](https://libsdl.org), after
+the [original web game](https://batiste.github.io/games/rpg/game.html).
+Demons attack the villages of a procedurally generated world: survive the
+waves, protect the villagers and slay the evil lord.
 
 ![Screenshot](assets/shot.png)
+
+## How to play
+
+- Move with WASD or the arrow keys. Your weapons strike on their own.
+- Waves of demons come for you. They bite any villager in their way, and the
+  villagers they kill rise again as skeletons. Lords spit green blobs; the
+  evil lord, every fifth wave, fires red ones. Killing him wins the game.
+- Fallen demons leave blue souls: walk near them to gain experience. Each
+  level offers three upgrades to choose from (keys 1 to 3): sword, throwing
+  stones, spirit flames, holy ground, swift boots, vitality, might, haste
+  and soul magnet. Some demons drop hearts.
+- Demons cannot enter houses. Villagers hide there, and you heal faster
+  inside.
 
 ## Features
 
@@ -41,7 +55,8 @@ roads, and villagers going about their day.
 | Key                 | Action                          |
 | ------------------- | ------------------------------- |
 | W A S D / arrows    | Move (physical keys, so it works on AZERTY too) |
-| Space               | Sword                           |
+| 1, 2, 3             | Choose an upgrade               |
+| Enter               | Start, continue                 |
 | R                   | Generate a new world            |
 | M                   | Toggle the minimap              |
 | N                   | Pause / resume the music        |
@@ -101,7 +116,8 @@ tilesets are defined in `src/tiles.h`.
 
 | File             | Purpose                                              |
 | ---------------- | ---------------------------------------------------- |
-| `src/main.c`     | Game loop, player, camera, rendering and HUD         |
+| `src/main.c`     | Game loop, player, camera, rendering, HUD, music     |
+| `src/combat.*`   | Waves, demons, weapons, upgrades, souls              |
 | `src/worldgen.c` | Procedural world generation                          |
 | `src/world.*`    | World data, collisions and walker path finding       |
 | `src/npc.*`      | Villager and pig behaviour                           |

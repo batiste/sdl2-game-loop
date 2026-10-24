@@ -103,5 +103,7 @@ int world_house_at(const World *world, float x, float y);
 // Path for walkers between two cells, preferring roads and going around
 // walls. Returns the cell count or -1.
 int world_find_path(const World *world, int sx, int sy, int gx, int gy, int *out, int maxOut);
+// Walking cost from every cell to (gx, gy), for chasers. See path_distance_field().
+bool world_distance_field(const World *world, int gx, int gy, float *out);
 
 #endif

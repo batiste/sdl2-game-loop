@@ -37,6 +37,13 @@ typedef struct Npc {
   int *path;
   int pathLen, pathPos;
   Uint64 rng;
+
+  // monster attacks
+  int hp;
+  bool dead;
+  int fear;       // ticks left being scared: run home and stay inside
+  bool running;
+  int hurtTimer;  // ticks left flashing after a hit
 } Npc;
 
 typedef struct Npcs {
@@ -47,6 +54,17 @@ typedef struct Npcs {
 bool npcs_spawn(Npcs *npcs, const World *world, Uint64 seed);
 void npcs_free(Npcs *npcs);
 void npcs_update(Npcs *npcs, const World *world);
+
+// Villagers around (x, y) run for the nearest house and stay inside a while.
+void npcs_scare(Npcs *npcs, const World *world, float x, float y, float radius);
+
+// Returns true if the hit killed the villager.
+bool npc_hurt(Npc *npc, int damage);
+
+static inline bool npc_exposed(const Npc *npc, const World *world) {
+  return !npc->dead && npc->kind == NPC_VILLAGER && npc->state != NPC_INSIDE &&
+         world_house_at(world, npc->x, npc->y) < 0;
+}
 
 // Frame to draw, and the sprite offset from the feet position.
 const Sprite *npc_sprite(const Npc *npc, const Atlas *atlas, Uint64 tick, bool *flip, SDL_FPoint *offset);
