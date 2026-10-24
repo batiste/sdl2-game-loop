@@ -120,6 +120,30 @@ void engine_set_vsync(Engine *engine, bool enabled) {
     return;
   }
   engine->vsync = enabled;
+  // On high refresh displays (120 Hz ProMotion...) about 60 fps is plenty for
+  // pixel art and halves the drawing work. The renderers can't present every
+  // other refresh, so engine_present() waits instead.
+  engine->framePeriod = 0;
+  const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(engine->window));
+  if (enabled && mode && mode->refresh_rate > 90) {
+    float refreshes = SDL_roundf(mode->refresh_rate / 60.0f);
+    engine->framePeriod = (Uint64)((double)refreshes * 1e9 / (double)mode->refresh_rate);
+  }
+}
+
+void engine_present(Engine *engine) {
+  if (engine->framePeriod > 0) {
+    // frames on a fixed schedule: the present itself may return early when
+    // the display has buffers to spare
+    Uint64 now = SDL_GetTicksNS();
+    if (engine->nextFrame < now || engine->nextFrame > now + engine->framePeriod) {
+      engine->nextFrame = now;  // first frame, or fell behind
+    } else {
+      SDL_DelayPrecise(engine->nextFrame - now);
+    }
+    engine->nextFrame += engine->framePeriod;
+  }
+  SDL_RenderPresent(engine->renderer);
 }
 
 char *engine_asset_path(const char *relative) {

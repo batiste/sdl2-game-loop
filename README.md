@@ -87,6 +87,9 @@ cmake --build build
 Install the same libraries from your distribution (or build SDL3 from source),
 then use the same CMake commands.
 
+The default build is optimised with debug info (`RelWithDebInfo`); add
+`-DCMAKE_BUILD_TYPE=Debug` for an unoptimised one.
+
 ### Debugging
 
 ```sh

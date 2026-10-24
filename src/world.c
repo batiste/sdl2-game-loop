@@ -19,6 +19,7 @@ void world_free(World *world) {
   SDL_free(world->solid);
   SDL_free(world->kind);
   SDL_free(world->houseAt);
+  SDL_free(world->steps);
   SDL_free(world->houses);
   SDL_free(world->villages);
   SDL_free(world);
@@ -84,19 +85,51 @@ int world_house_at(const World *world, float x, float y) {
   return x >= b->x && y >= b->y && x < b->x + b->w && y < b->y + b->h ? h : -1;
 }
 
-static float walker_cost(void *ctx, int fx, int fy, int x, int y) {
-  const World *world = ctx;
+static const int STEP_DX[4] = {1, -1, 0, 0}, STEP_DY[4] = {0, 0, 1, -1};
+
+// The slow check: the target cell is free and the walk between the two cell
+// centres doesn't cross a wall.
+static bool can_step(const World *world, int fx, int fy, int x, int y) {
   if (!world_walkable(world, x, y)) {
-    return -1;
+    return false;
   }
-  // the step between the two cell centres must not cross a wall
   float ax = world_cell_feet_x(fx), ay = world_cell_feet_y(fy);
   float bx = world_cell_feet_x(x), by = world_cell_feet_y(y);
   for (int s = 1; s < 8; s++) {
     float t = (float)s / 8.0f;
     if (walker_blocked(world, ax + (bx - ax) * t, ay + (by - ay) * t)) {
-      return -1;
+      return false;
     }
+  }
+  return true;
+}
+
+bool world_build_steps(World *world) {
+  SDL_free(world->steps);
+  world->steps = SDL_calloc((size_t)(world->width * world->height), 1);
+  if (!world->steps) {
+    return false;
+  }
+  for (int y = 0; y < world->height; y++) {
+    for (int x = 0; x < world->width; x++) {
+      Uint8 bits = 0;
+      for (int d = 0; d < 4; d++) {
+        int nx = x + STEP_DX[d], ny = y + STEP_DY[d];
+        if (world_in_bounds(world, nx, ny) && can_step(world, x, y, nx, ny)) {
+          bits |= (Uint8)(1 << d);
+        }
+      }
+      world->steps[y * world->width + x] = bits;
+    }
+  }
+  return true;
+}
+
+static float walker_cost(void *ctx, int fx, int fy, int x, int y) {
+  const World *world = ctx;
+  int d = x > fx ? 0 : x < fx ? 1 : y > fy ? 2 : 3;
+  if (!(world->steps[fy * world->width + fx] & (1 << d))) {
+    return -1;
   }
   switch (world->kind[y * world->width + x]) {
     case CELL_PATH: return 1.0f;
