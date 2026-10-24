@@ -34,6 +34,8 @@
 #define CHARACTER_OFFSET_X 24.0f  // feet position inside the 48x48 sprite
 #define CHARACTER_OFFSET_Y 40.0f
 #define GREETING_DISTANCE 64.0f
+#define MUSIC_GAIN 0.6f
+#define MUSIC_FADE_IN_MS 2000
 #define ROOF_INSIDE_ALPHA 0.12f
 #define ROOF_FADE_PER_SECOND 4.0f
 #define DOOR_ASSIST 12  // pixels the player is nudged sideways towards a gap
@@ -62,6 +64,8 @@ typedef struct Game {
   TTF_Font *smallFont;
   MIX_Audio *swish;
   MIX_Track *sfxTrack;
+  MIX_Audio *music;
+  MIX_Track *musicTrack;
 
   World *world;
   Npcs npcs;
@@ -161,7 +165,7 @@ static bool new_world(Game *game, Uint64 seed) {
   build_minimap(game);
 
   char info[128];
-  SDL_snprintf(info, sizeof(info), "Seed %" SDL_PRIu64 "   R: new world   M: map   C: vsync", seed);
+  SDL_snprintf(info, sizeof(info), "Seed %" SDL_PRIu64 "   R: new world   M: map   N: music   C: vsync", seed);
   set_text(game, &game->infoText, game->smallFont, info);
   return true;
 }
@@ -605,6 +609,39 @@ static void render_game(Game *game, Uint64 now) {
   render_hud(game, now);
 }
 
+// Background music, looping forever. The game works without it.
+static void start_music(Game *game) {
+  Engine *engine = &game->engine;
+  game->music = engine_load_audio(engine, "village-music-1.mp3", false);
+  if (!game->music) {
+    return;
+  }
+  game->musicTrack = MIX_CreateTrack(engine->mixer);
+  if (!game->musicTrack) {
+    return;
+  }
+  MIX_SetTrackAudio(game->musicTrack, game->music);
+  MIX_SetTrackGain(game->musicTrack, MUSIC_GAIN);
+  SDL_PropertiesID options = SDL_CreateProperties();
+  SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, -1);
+  SDL_SetNumberProperty(options, MIX_PROP_PLAY_FADE_IN_MILLISECONDS_NUMBER, MUSIC_FADE_IN_MS);
+  if (!MIX_PlayTrack(game->musicTrack, options)) {
+    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Couldn't play music: %s", SDL_GetError());
+  }
+  SDL_DestroyProperties(options);
+}
+
+static void toggle_music(Game *game) {
+  if (!game->musicTrack) {
+    return;
+  }
+  if (MIX_TrackPaused(game->musicTrack)) {
+    MIX_ResumeTrack(game->musicTrack);
+  } else {
+    MIX_PauseTrack(game->musicTrack);
+  }
+}
+
 static void start_game(Game *game, Uint64 now) {
   game->scene = SCENE_PLAYING;
   game->sceneStart = now;
@@ -649,11 +686,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   }
   game->oink = engine_render_text(engine, game->smallFont, "Oink!");
 
-  game->swish = engine_load_audio(engine, "swish-2.ogg");
+  game->swish = engine_load_audio(engine, "swish-2.ogg", true);
   if (game->swish) {
     game->sfxTrack = MIX_CreateTrack(engine->mixer);
     MIX_SetTrackAudio(game->sfxTrack, game->swish);
   }
+  start_music(game);
 
   if (!new_world(game, seed)) {
     return SDL_APP_FAILURE;
@@ -691,6 +729,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
           break;
         case SDL_SCANCODE_M:
           game->showMap = !game->showMap;
+          break;
+        case SDL_SCANCODE_N:
+          toggle_music(game);
           break;
         case SDL_SCANCODE_R:
           if (!new_world(game, random_seed())) {
@@ -744,6 +785,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   }
   if (game->sfxTrack) {
     MIX_DestroyTrack(game->sfxTrack);
+  }
+  if (game->musicTrack) {
+    MIX_DestroyTrack(game->musicTrack);
   }
   SDL_DestroyTexture(game->fpsText);
   SDL_DestroyTexture(game->infoText);

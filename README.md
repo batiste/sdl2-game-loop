@@ -44,6 +44,7 @@ roads, and villagers going about their day.
 | Space               | Sword                           |
 | R                   | Generate a new world            |
 | M                   | Toggle the minimap              |
+| N                   | Pause / resume the music        |
 | C                   | Toggle vsync / uncapped FPS     |
 | Esc                 | Quit                            |
 

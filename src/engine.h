@@ -41,7 +41,8 @@ char *engine_asset_path(const char *relative);
 // Loaders return NULL and log on failure. Engine owns the returned objects.
 SDL_Texture *engine_load_texture(Engine *engine, const char *relative);
 TTF_Font *engine_load_font(Engine *engine, const char *relative, float size);
-MIX_Audio *engine_load_audio(Engine *engine, const char *relative);
+// Short sounds are decoded up front; music is streamed from the file.
+MIX_Audio *engine_load_audio(Engine *engine, const char *relative, bool predecode);
 
 // Load an image as an RGBA32 surface for pixel edits. Caller owns it.
 SDL_Surface *engine_load_surface(const char *relative);

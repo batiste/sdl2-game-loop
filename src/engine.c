@@ -156,13 +156,12 @@ TTF_Font *engine_load_font(Engine *engine, const char *relative, float size) {
   return font;
 }
 
-MIX_Audio *engine_load_audio(Engine *engine, const char *relative) {
+MIX_Audio *engine_load_audio(Engine *engine, const char *relative, bool predecode) {
   if (!engine->mixer) {
     return NULL;
   }
   char *path = engine_asset_path(relative);
-  // Short sound effects are decoded up front so they play without latency.
-  MIX_Audio *audio = MIX_LoadAudio(engine->mixer, path, true);
+  MIX_Audio *audio = MIX_LoadAudio(engine->mixer, path, predecode);
   if (audio) {
     track(engine, RESOURCE_AUDIO, audio);
   } else {
