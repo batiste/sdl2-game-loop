@@ -176,6 +176,7 @@ static void update_npc(Npc *npc, const World *world) {
     return;
   }
   float speed = npc->kind == NPC_PIG ? PIG_SPEED : (npc->running ? RUN_SPEED : VILLAGER_SPEED);
+  speed *= world_ground_speed(world, npc->x, npc->y);
   npc->prevX = npc->x;
   npc->prevY = npc->y;
   npc->moving = false;

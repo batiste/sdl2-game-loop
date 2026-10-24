@@ -193,9 +193,17 @@ static void kill_monster(Combat *c, int i) {
   remove_monster(c, i);
 }
 
+static void popup(Combat *c, float x, float y, float amount, bool hero) {
+  if (c->numPopups < MAX_POPUPS) {
+    int shown = SDL_max(1, (int)SDL_roundf(amount));
+    c->popups[c->numPopups++] = (Popup){x + (rndf(c) - 0.5f) * 12, y, shown, POPUP_TICKS, hero};
+  }
+}
+
 // Returns true if the monster died (and was removed).
 static bool hit_monster(Combat *c, int i, float damage, float fromX, float fromY, float kick) {
   Monster *m = &c->monsters[i];
+  popup(c, m->x, m->y - (m->kind == MON_BOSS ? 70 : 34), SDL_min(damage, m->hp), false);
   m->hp -= damage;
   m->hurtTimer = 8;
   float dx = m->x - fromX, dy = m->y - fromY, d = SDL_sqrtf(dx * dx + dy * dy);
@@ -215,6 +223,7 @@ static void hurt_hero(Combat *c, float damage) {
   if (h->invulnerable > 0 || h->hp <= 0) {
     return;
   }
+  popup(c, 0, -46, SDL_ceilf(damage), true);  // follows the hero, see main.c
   h->hp = SDL_max(0, h->hp - (int)SDL_ceilf(damage));
   h->invulnerable = HERO_INVULNERABLE;
   if (h->hp == 0) {
@@ -474,7 +483,7 @@ static void update_monster(Combat *c, const World *world, Npcs *npcs, int i, flo
     m->target = -2;
   }
 
-  float speed = info->speed;
+  float speed = info->speed * world_ground_speed(world, m->x, m->y);
   if (m->target == -2) {
     // the hero hides in a house: lurk around it
     if (--m->wanderTimer <= 0) {
@@ -766,6 +775,13 @@ int combat_update(Combat *c, const World *world, Npcs *npcs, float hx, float hy)
     d->x += d->vx;
     if (--d->life <= 0) {
       c->debris[i] = c->debris[--c->numDebris];
+    }
+  }
+  for (int i = c->numPopups - 1; i >= 0; i--) {
+    Popup *p = &c->popups[i];
+    p->y -= 0.8f;
+    if (--p->life <= 0) {
+      c->popups[i] = c->popups[--c->numPopups];
     }
   }
   for (int i = c->numSlashes - 1; i >= 0; i--) {

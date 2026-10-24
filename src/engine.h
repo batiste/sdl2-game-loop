@@ -60,6 +60,9 @@ SDL_Texture *engine_texture_from_surface(Engine *engine, SDL_Surface *surface);
 
 // Render black text with a white drop shadow. Caller owns the texture.
 SDL_Texture *engine_render_text(Engine *engine, TTF_Font *font, const char *text);
+// Text in `color` with a one pixel `outline` all around. Caller owns the texture.
+SDL_Texture *engine_render_outlined_text(Engine *engine, TTF_Font *font, const char *text, SDL_Color color,
+                                         SDL_Color outline);
 // Same, breaking lines at newlines and to fit wrapWidth pixels (0: newlines only).
 SDL_Texture *engine_render_text_wrapped(Engine *engine, TTF_Font *font, const char *text, int wrapWidth);
 

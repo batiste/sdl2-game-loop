@@ -194,6 +194,27 @@ SDL_Texture *engine_render_text(Engine *engine, TTF_Font *font, const char *text
   return engine_render_text_wrapped(engine, font, text, 0);
 }
 
+SDL_Texture *engine_render_outlined_text(Engine *engine, TTF_Font *font, const char *text, SDL_Color color,
+                                         SDL_Color outline) {
+  SDL_Surface *back = TTF_RenderText_Solid(font, text, 0, outline);
+  SDL_Surface *front = TTF_RenderText_Solid(font, text, 0, color);
+  SDL_Surface *surface = back && front ? SDL_CreateSurface(front->w + 4, front->h + 4, SDL_PIXELFORMAT_RGBA32) : NULL;
+  SDL_Texture *texture = NULL;
+  if (surface) {
+    for (int dy = -2; dy <= 2; dy += 2) {
+      for (int dx = -2; dx <= 2; dx += 2) {
+        SDL_BlitSurface(back, NULL, surface, &(SDL_Rect){2 + dx, 2 + dy, back->w, back->h});
+      }
+    }
+    SDL_BlitSurface(front, NULL, surface, &(SDL_Rect){2, 2, front->w, front->h});
+    texture = SDL_CreateTextureFromSurface(engine->renderer, surface);
+  }
+  SDL_DestroySurface(back);
+  SDL_DestroySurface(front);
+  SDL_DestroySurface(surface);
+  return texture;
+}
+
 SDL_Texture *engine_render_text_wrapped(Engine *engine, TTF_Font *font, const char *text, int wrapWidth) {
   const SDL_Color black = {0, 0, 0, 255};
   const SDL_Color white = {255, 255, 255, 255};

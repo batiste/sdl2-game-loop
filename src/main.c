@@ -130,6 +130,7 @@ typedef struct Game {
   SDL_Texture *greetings[NUM_GREETINGS];
   SDL_Texture *oink;
   SDL_Texture *help;
+  SDL_Texture *digits[2][10];  // damage numbers: dealt, taken
 
   // modal panel: intro, level up, game over, victory
   SDL_Texture *panelTitle;
@@ -403,7 +404,8 @@ static void update(Game *game) {
   float dx = (float)(right - left), dy = (float)(down - up);
   float length = SDL_sqrtf(dx * dx + dy * dy);
   if (length > 0) {
-    float speed = PLAYER_SPEED * combat_speed_factor(&game->combat) / length;
+    float speed = PLAYER_SPEED * combat_speed_factor(&game->combat) *
+                  world_ground_speed(game->world, game->x, game->y) / length;
     move_player(game, dx * speed, 0);
     move_player(game, 0, dy * speed);
   }
@@ -673,6 +675,33 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
       float size = k == 0 ? 6 : 4;
       fill(renderer, s->x - camX + SDL_cosf(a) * r - size / 2, s->y - camY + SDL_sinf(a) * r - size / 2, size, size,
            (SDL_Color){255, 255, 255, alpha});
+    }
+  }
+
+  // damage numbers, built from pre-rendered digits
+  for (int i = 0; i < c->numPopups; i++) {
+    const Popup *p = &c->popups[i];
+    char text[12];
+    SDL_snprintf(text, sizeof(text), "%d", p->amount);
+    SDL_Texture *const *set = game->digits[p->hero ? 1 : 0];
+    float w = 0, h = 0;
+    for (const char *ch = text; *ch; ch++) {
+      float dw, dh;
+      if (set[*ch - '0'] && SDL_GetTextureSize(set[*ch - '0'], &dw, &dh)) {
+        w += dw - 4, h = dh;
+      }
+    }
+    float x = SDL_roundf((p->hero ? px : p->x) - camX - w / 2);
+    float y = SDL_roundf((p->hero ? py : 0) + p->y - camY - h / 2);
+    float alpha = SDL_min(1.0f, (float)p->life / 10);
+    for (const char *ch = text; *ch; ch++) {
+      SDL_Texture *digit = set[*ch - '0'];
+      float dw, dh;
+      if (digit && SDL_GetTextureSize(digit, &dw, &dh)) {
+        SDL_SetTextureAlphaModFloat(digit, alpha);
+        SDL_RenderTexture(renderer, digit, NULL, &(SDL_FRect){x, y, dw, dh});
+        x += dw - 4;
+      }
     }
   }
 
@@ -1147,6 +1176,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   }
   game->oink = engine_render_text(engine, game->smallFont, "Oink!");
   game->help = engine_render_text(engine, game->smallFont, "Help!");
+  for (int i = 0; i < 10; i++) {
+    char digit[2] = {(char)('0' + i), 0};
+    SDL_Color outline = {40, 24, 24, 255};
+    game->digits[0][i] = engine_render_outlined_text(engine, game->smallFont, digit, (SDL_Color){255, 255, 255, 255}, outline);
+    game->digits[1][i] = engine_render_outlined_text(engine, game->smallFont, digit, (SDL_Color){255, 70, 60, 255}, outline);
+  }
 
   game->swish = engine_load_audio(engine, "swish-2.ogg", true);
   if (game->swish) {
@@ -1342,6 +1377,10 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   }
   SDL_DestroyTexture(game->oink);
   SDL_DestroyTexture(game->help);
+  for (int i = 0; i < 10; i++) {
+    SDL_DestroyTexture(game->digits[0][i]);
+    SDL_DestroyTexture(game->digits[1][i]);
+  }
   SDL_free(game->drawables);
   combat_free(&game->combat);
   npcs_free(&game->npcs);

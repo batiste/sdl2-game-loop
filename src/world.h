@@ -80,6 +80,15 @@ static inline Box *world_boxes(const World *w, int x, int y) {
   return &w->solid[(y * w->width + x) * BOXES_PER_CELL];
 }
 
+// Walking on a path (roads, plazas) is this much faster than elsewhere.
+#define PATH_SPEED_BONUS 1.25f
+
+// Speed multiplier for someone with their feet at (x, y), in world pixels.
+static inline float world_ground_speed(const World *w, float x, float y) {
+  int cx = (int)(x / TILE_SIZE), cy = (int)(y / TILE_SIZE);
+  return world_in_bounds(w, cx, cy) && w->kind[cy * w->width + cx] == CELL_PATH ? PATH_SPEED_BONUS : 1.0f;
+}
+
 // Does the rectangle (in world pixels) overlap anything solid?
 bool world_blocked(const World *world, float x0, float y0, float x1, float y1);
 

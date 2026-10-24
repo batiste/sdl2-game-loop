@@ -108,12 +108,23 @@ typedef struct Slash {
   int life;
 } Slash;
 
+// a damage number floating up and fading
+typedef struct Popup {
+  float x, y;
+  int amount;
+  int life;
+  bool hero;  // damage taken by the hero
+} Popup;
+
+#define POPUP_TICKS 30
+
 typedef enum WaveState { WAVE_CALM, WAVE_ATTACK } WaveState;
 
 #define MAX_SHOTS 256
 #define MAX_SOULS 1024
 #define MAX_DEBRIS 128
 #define MAX_SLASHES 8
+#define MAX_POPUPS 192
 
 typedef struct Combat {
   Uint64 rng;
@@ -129,6 +140,8 @@ typedef struct Combat {
   int numDebris;
   Slash slashes[MAX_SLASHES];
   int numSlashes;
+  Popup popups[MAX_POPUPS];
+  int numPopups;
 
   int wave;
   WaveState waveState;
