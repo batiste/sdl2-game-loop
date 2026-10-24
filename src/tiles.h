@@ -29,6 +29,12 @@
 // door steps of the small houses, flat tiles in front of the wall
 #define GID_IS_DOOR_STEP(gid) ((gid) >= GID_TILES(10, 3) && (gid) <= GID_TILES(15, 3))
 
+// houses without a roof are seen from above, so they are drawn flat
+#define GID_IN_RECT(gid, c0, r0, c1, r1)                                     \
+  ((gid) >= GID_TILES(0, r0) && (gid) <= GID_TILES(20, r1) &&                \
+   ((gid) - GID_TILES(0, 0)) % 21 >= (c0) && ((gid) - GID_TILES(0, 0)) % 21 <= (c1))
+#define GID_IS_OPEN_HOUSE(gid) (GID_IN_RECT(gid, 1, 1, 4, 4) || GID_IN_RECT(gid, 10, 1, 12, 2))
+
 // nature.png terrain sets: 3x3 blob in cols 0-2, inner corners in cols 3-4,
 // plain centre variants in col 5
 #define TERRAIN_WATER 0

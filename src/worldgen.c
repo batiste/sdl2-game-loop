@@ -21,13 +21,29 @@ typedef struct HouseTemplate {
   int doorCol;   // door column, relative to the house
   bool step;     // the last row is a walkable door step
   int weight;
+
+  // Walls, in pixels relative to the house: outer bounds, thickness of
+  // each side and the door opening in the bottom wall.
+  int bodyX, bodyY, bodyW, bodyH;
+  int top, left, right, bottom;
+  int door0, door1;
+
+  // Interior shown when the roof fades: the matching roofless house in
+  // tiles.png, row by row (the large one is a row taller).
+  bool roof;
+  int interiorCol, interiorRow;
+  int interiorRows[4];
 } HouseTemplate;
 
 static const HouseTemplate TEMPLATES[] = {
-    {1, 7, 4, 3, 1, false, 40},  // large, red roof
-    {13, 1, 3, 3, 1, true, 45},  // small, red roof
-    {10, 1, 3, 3, 1, true, 8},   // small, open roof
-    {1, 1, 4, 4, 1, false, 7},   // large, open roof
+    // large, red roof
+    {1, 7, 4, 3, 1, false, 40, 0, 0, 192, 144, 18, 12, 18, 14, 60, 81, true, 1, 1, {0, 1, 3}},
+    // small, red roof
+    {13, 1, 3, 3, 1, true, 45, 22, 0, 98, 96, 19, 15, 16, 14, 58, 83, true, 10, 1, {0, 1, 2}},
+    // small, open roof
+    {10, 1, 3, 3, 1, true, 8, 22, 0, 98, 96, 19, 15, 16, 14, 58, 83, false, 0, 0, {0}},
+    // large, open roof
+    {1, 1, 4, 4, 1, false, 7, 0, 0, 192, 192, 18, 12, 18, 14, 60, 81, false, 0, 0, {0}},
 };
 #define NUM_TEMPLATES ((int)SDL_arraysize(TEMPLATES))
 
@@ -227,7 +243,9 @@ typedef struct RouteCtx {
 } RouteCtx;
 
 // Roads are 2 cells wide: a route cell is the top-left of a 2x2 brush.
-static float road_cost(void *ctx, int x, int y) {
+static float road_cost(void *ctx, int fx, int fy, int x, int y) {
+  (void)fx;
+  (void)fy;
   Gen *g = ctx;
   if (x + 1 >= g->w || y + 1 >= g->h || x < 1 || y < 1) {
     return -1;
@@ -312,6 +330,44 @@ static bool area_clear_of_water(Gen *g, int cx, int cy, int r) {
   return true;
 }
 
+static void add_box(World *world, int x, int y, Box b) {
+  if (b.x1 <= b.x0 || b.y1 <= b.y0) {
+    return;
+  }
+  Box *boxes = world_boxes(world, x, y);
+  for (int k = 0; k < BOXES_PER_CELL; k++) {
+    if (boxes[k].x1 <= boxes[k].x0) {
+      boxes[k] = b;
+      return;
+    }
+  }
+  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Too many collision boxes in cell %d,%d", x, y);
+}
+
+// Cut the wall rectangles of a house along the cell grid.
+static void add_walls(World *world, const HouseTemplate *t, int hx, int hy) {
+  int x0 = t->bodyX, y0 = t->bodyY, x1 = t->bodyX + t->bodyW, y1 = t->bodyY + t->bodyH;
+  const SDL_Rect walls[] = {
+      {x0, y0, x1 - x0, t->top},
+      {x0, y0, t->left, y1 - y0},
+      {x1 - t->right, y0, t->right, y1 - y0},
+      {x0, y1 - t->bottom, t->door0 - x0, t->bottom},
+      {t->door1, y1 - t->bottom, x1 - t->door1, t->bottom},
+  };
+  for (int r = 0; r < t->h; r++) {
+    for (int c = 0; c < t->w; c++) {
+      SDL_Rect cell = {c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE};
+      for (int k = 0; k < (int)SDL_arraysize(walls); k++) {
+        SDL_Rect part;
+        if (SDL_GetRectIntersection(&walls[k], &cell, &part)) {
+          add_box(world, hx + c, hy + r, (Box){(Uint8)(part.x - cell.x), (Uint8)(part.y - cell.y),
+                                               (Uint8)(part.x + part.w - cell.x), (Uint8)(part.y + part.h - cell.y)});
+        }
+      }
+    }
+  }
+}
+
 static const HouseTemplate *pick_template(Gen *g) {
   int total = 0;
   for (int i = 0; i < NUM_TEMPLATES; i++) {
@@ -350,7 +406,7 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
   int doorX = hx + t->doorCol;
   int doorY = t->step ? hy + t->h - 1 : hy + t->h;
   int stepRow = t->step ? hy + t->h - 1 : -1;
-  if (road_cost(g, doorX, doorY) < 0) {
+  if (road_cost(g, doorX, doorY, doorX, doorY) < 0) {
     return false;
   }
 
@@ -376,19 +432,30 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
   }
 
   World *world = g->world;
-  House *house = &world->houses[world->numHouses++];
-  *house = (House){hx, hy, t->w, t->h, doorX, doorY, villageIndex};
+  int index = world->numHouses++;
+  House *house = &world->houses[index];
+  float ox = (float)(hx * TILE_SIZE), oy = (float)(hy * TILE_SIZE);
+  *house = (House){
+      .x = hx, .y = hy, .w = t->w, .h = t->h, .doorX = doorX, .doorY = doorY,
+      .village = villageIndex, .roof = t->roof,
+      .body = {ox + (float)t->bodyX, oy + (float)t->bodyY, (float)t->bodyW, (float)t->bodyH},
+  };
 
   for (int r = 0; r < t->h; r++) {
     for (int c = 0; c < t->w; c++) {
       int i = (hy + r) * g->w + hx + c;
       world->top[i] = (Uint16)GID_TILES(t->col + c, t->row + r);
-      if (hy + r != stepRow) {  // the step is flat and walkable
-        world->kind[i] = CELL_HOUSE;
-        world->solid[i] = (Box){0, 0, TILE_SIZE, TILE_SIZE};
+      world->houseAt[i] = (Sint16)index;
+      if (hy + r == stepRow) {
+        continue;  // the step is flat and walkable
+      }
+      world->kind[i] = CELL_HOUSE;
+      if (t->roof) {
+        world->interior[i] = (Uint16)GID_TILES(t->interiorCol + c, t->interiorRow + t->interiorRows[r]);
       }
     }
   }
+  add_walls(world, t, hx, hy);
   return true;
 }
 
@@ -530,10 +597,7 @@ static bool cell_free(Gen *g, int x, int y) {
 static void put_deco(Gen *g, int x, int y, Deco d) {
   int i = y * g->w + x;
   g->world->top[i] = (Uint16)GID_DECO(d);
-  Box b = deco_box(d);
-  if (b.x1 > b.x0) {
-    g->world->solid[i] = b;
-  }
+  add_box(g->world, x, y, deco_box(d));
   if (d == DECO_BUSH) {
     g->world->kind[i] = CELL_FOREST;
   }
@@ -542,7 +606,7 @@ static void put_deco(Gen *g, int x, int y, Deco d) {
 static void put_palm(Gen *g, int x, int y) {
   int i = y * g->w + x;
   g->world->top[i] = GID_PALM;
-  g->world->solid[i] = (Box){16, 26, 32, 44};
+  add_box(g->world, x, y, (Box){16, 26, 32, 44});
   g->world->kind[i] = CELL_FOREST;
 }
 
@@ -692,7 +756,7 @@ static void paint_terrain(Gen *g) {
         if (!mask_at(g, g->water, x + 1, y, true)) b.x1 = TILE_SIZE - 12;
         if (!mask_at(g, g->water, x, y - 1, true)) b.y0 = 12;
         if (!mask_at(g, g->water, x, y + 1, true)) b.y1 = TILE_SIZE - 12;
-        world->solid[i] = b;
+        add_box(world, x, y, b);
       } else if (g->path[i]) {
         world->ground[i] = autotile(g, g->path, x, y, TERRAIN_PATH, false);
         world->kind[i] = CELL_PATH;
@@ -725,10 +789,16 @@ World *world_generate(Uint64 seed, int width, int height) {
     *world = (World){
         .seed = seed, .width = width, .height = height,
         .ground = SDL_calloc(cells, sizeof(Uint16)), .top = SDL_calloc(cells, sizeof(Uint16)),
-        .solid = SDL_calloc(cells, sizeof(Box)), .kind = SDL_calloc(cells, 1),
+        .interior = SDL_calloc(cells, sizeof(Uint16)),
+        .solid = SDL_calloc(cells * BOXES_PER_CELL, sizeof(Box)), .kind = SDL_calloc(cells, 1),
+        .houseAt = SDL_malloc(cells * sizeof(Sint16)),
     };
+    for (size_t i = 0; world->houseAt && i < cells; i++) {
+      world->houseAt[i] = -1;
+    }
   }
-  bool ok = world && world->ground && world->top && world->solid && world->kind &&
+  bool ok = world && world->ground && world->top && world->interior && world->solid &&
+            world->kind && world->houseAt &&
             g.water && g.nearWater && g.path && g.reserved && g.route;
 
   if (ok) {

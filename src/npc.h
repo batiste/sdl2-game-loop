@@ -15,9 +15,7 @@ typedef enum NpcKind { NPC_VILLAGER, NPC_PIG } NpcKind;
 typedef enum NpcState {
   NPC_IDLE,
   NPC_WALKING,
-  NPC_ENTERING,  // walking through a door
-  NPC_INSIDE,
-  NPC_EXITING,
+  NPC_INSIDE,  // resting in a house
 } NpcState;
 
 typedef struct Npc {
@@ -52,9 +50,5 @@ void npcs_update(Npcs *npcs, const World *world);
 
 // Frame to draw, and the sprite offset from the feet position.
 const Sprite *npc_sprite(const Npc *npc, const Atlas *atlas, Uint64 tick, bool *flip, SDL_FPoint *offset);
-
-static inline bool npc_visible(const Npc *npc) {
-  return npc->state != NPC_INSIDE;
-}
 
 #endif

@@ -7,8 +7,9 @@
 #ifndef GAME_PATHFIND_H
 #define GAME_PATHFIND_H
 
-// Cost of stepping onto cell (x, y); a negative value means blocked.
-typedef float (*PathCostFn)(void *ctx, int x, int y);
+// Cost of stepping from cell (fx, fy) onto the adjacent cell (x, y);
+// a negative value means blocked.
+typedef float (*PathCostFn)(void *ctx, int fx, int fy, int x, int y);
 
 typedef struct PathQuery {
   int width, height;

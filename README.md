@@ -18,6 +18,9 @@ roads, and villagers going about their day.
 - **Villagers** with different shirt colours live in the houses. They come
   out, walk the roads to the plaza, visit neighbours, sometimes travel to
   another village, and go back inside. Pigs potter around the villages.
+- **Enterable houses**: walls have real collision with a door opening; step
+  inside and the roof fades away to show the room and whoever is home.
+  Villagers walk in and out through the door too.
 - Depth-sorted rendering, so characters walk behind trees and houses
 - Village name banner when you arrive, greetings from nearby villagers, minimap
 - Fixed-timestep simulation (50 Hz) with interpolated rendering; same game

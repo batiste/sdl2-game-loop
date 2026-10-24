@@ -116,7 +116,7 @@ static bool load_characters(Atlas *atlas, Engine *engine) {
 }
 
 // The pig in tiles.png (column 15, rows 6-7) sits on a white square:
-// copy both frames side by side and make the white transparent.
+// copy both frames side by side and make the background transparent.
 static bool load_pig(Atlas *atlas, Engine *engine) {
   SDL_Surface *tiles = engine_load_surface("tiles.png");
   SDL_Surface *pig = SDL_CreateSurface(2 * TILE_SIZE, TILE_SIZE, SDL_PIXELFORMAT_RGBA32);
@@ -134,6 +134,7 @@ static bool load_pig(Atlas *atlas, Engine *engine) {
         }
       }
     }
+    clear_grass(pig);  // the cell also has the grid line on two sides
     SDL_Texture *texture = engine_texture_from_surface(engine, pig);
     atlas->pig = texture ? animation_create(texture, (SDL_Rect){0, 0, TILE_SIZE, TILE_SIZE}, 8, 2) : NULL;
     ok = atlas->pig != NULL;

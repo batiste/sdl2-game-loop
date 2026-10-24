@@ -34,6 +34,9 @@
 #define CHARACTER_OFFSET_X 24.0f  // feet position inside the 48x48 sprite
 #define CHARACTER_OFFSET_Y 40.0f
 #define GREETING_DISTANCE 64.0f
+#define ROOF_INSIDE_ALPHA 0.12f
+#define ROOF_FADE_PER_SECOND 4.0f
+#define DOOR_ASSIST 12  // pixels the player is nudged sideways towards a gap
 
 static const char *const GREETINGS[] = {"Hello!", "Nice day!", "Hi there!", "Welcome!", "Lovely weather.", "Oh, hi."};
 #define NUM_GREETINGS ((int)SDL_arraysize(GREETINGS))
@@ -84,6 +87,11 @@ typedef struct Game {
   int currentVillage;
   SDL_Texture *greetings[NUM_GREETINGS];
   SDL_Texture *oink;
+
+  // house whose roof is faded (player inside, or just left), -1 if none
+  int roofHouse;
+  float roofAlpha;
+  Uint64 lastFrame;
 
   Drawable *drawables;
   int capDrawables;
@@ -143,6 +151,8 @@ static bool new_world(Game *game, Uint64 seed) {
   game->x = game->prevX = world->spawnX;
   game->y = game->prevY = world->spawnY;
   game->facing = DIR_DOWN;
+  game->roofHouse = -1;
+  game->roofAlpha = 1;
   game->currentVillage = -2;  // show the banner for the starting village
   build_minimap(game);
 
@@ -160,6 +170,32 @@ static Uint64 random_seed(void) {
 
 static bool player_blocked(const Game *game, float x, float y) {
   return world_blocked(game->world, x - 8, y - 6, x + 8, y + 2);
+}
+
+// Move along one axis; when blocked, slide sideways if a gap (a door) is close.
+static void move_player(Game *game, float dx, float dy) {
+  if (dx == 0 && dy == 0) {
+    return;
+  }
+  if (!player_blocked(game, game->x + dx, game->y + dy)) {
+    game->x += dx;
+    game->y += dy;
+    return;
+  }
+  for (int d = 1; d <= DOOR_ASSIST; d++) {
+    for (int sign = -1; sign <= 1; sign += 2) {
+      float sx = dy != 0 ? (float)(sign * d) : 0, sy = dx != 0 ? (float)(sign * d) : 0;
+      if (!player_blocked(game, game->x + sx + dx, game->y + sy + dy)) {
+        float step = SDL_min((float)d, 2.0f) * (float)sign;
+        float nx = game->x + (dy != 0 ? step : 0), ny = game->y + (dx != 0 ? step : 0);
+        if (!player_blocked(game, nx, ny)) {
+          game->x = nx;
+          game->y = ny;
+        }
+        return;
+      }
+    }
+  }
 }
 
 static void update_banner(Game *game) {
@@ -190,12 +226,8 @@ static void update(Game *game) {
 
   float dx = (float)(right - left) * PLAYER_SPEED;
   float dy = (float)(down - up) * PLAYER_SPEED;
-  if (dx != 0 && !player_blocked(game, game->x + dx, game->y)) {
-    game->x += dx;
-  }
-  if (dy != 0 && !player_blocked(game, game->x, game->y + dy)) {
-    game->y += dy;
-  }
+  move_player(game, dx, 0);
+  move_player(game, 0, dy);
 
   bool moving = up || down || left || right;
   if (up) game->facing = DIR_UP;
@@ -223,7 +255,31 @@ static void update(Game *game) {
 static bool is_flat(Uint16 gid) {
   return gid == GID_DECO(DECO_RED_FLOWERS) || gid == GID_DECO(DECO_PURPLE_FLOWERS) ||
          gid == GID_DECO(DECO_PEBBLES) || gid == GID_DECO(DECO_LILY) ||
-         gid == GID_DECO(DECO_LILY_FLOWER) || GID_IS_DOOR_STEP(gid);
+         gid == GID_DECO(DECO_LILY_FLOWER) || GID_IS_DOOR_STEP(gid) || GID_IS_OPEN_HOUSE(gid);
+}
+
+static bool in_house(const House *house, int col, int row) {
+  return col >= house->x && row >= house->y && col < house->x + house->w && row < house->y + house->h;
+}
+
+// Fade the roof of the house the player is in.
+static void update_roof(Game *game, Uint64 now) {
+  float dt = (float)(now - game->lastFrame) / (float)SDL_NS_PER_SECOND;
+  game->lastFrame = now;
+  int inside = world_house_at(game->world, game->x, game->y);
+  if (inside >= 0 && game->world->houses[inside].roof && inside != game->roofHouse) {
+    game->roofHouse = inside;
+  }
+  if (game->roofHouse < 0) {
+    return;
+  }
+  float target = inside == game->roofHouse ? ROOF_INSIDE_ALPHA : 1.0f;
+  float step = ROOF_FADE_PER_SECOND * SDL_min(dt, 0.1f);
+  game->roofAlpha = target < game->roofAlpha ? SDL_max(target, game->roofAlpha - step)
+                                             : SDL_min(target, game->roofAlpha + step);
+  if (target == 1.0f && game->roofAlpha >= 1.0f) {
+    game->roofHouse = -1;
+  }
 }
 
 static bool is_building(Uint16 gid) {
@@ -262,13 +318,21 @@ static void render_world(Game *game, float camX, float camY, float t) {
   int col1 = SDL_min(world->width - 1, (int)((camX + (float)game->engine.width) / TILE_SIZE));
   int row1 = SDL_min(world->height - 1, (int)((camY + (float)game->engine.height) / TILE_SIZE));
 
-  // ground, then flat decorations that everything walks over
+  const House *open = game->roofHouse >= 0 ? &world->houses[game->roofHouse] : NULL;
+
+  // ground, then flat decorations that everything walks over, and the
+  // inside of the house whose roof is faded
   for (int pass = 0; pass < 2; pass++) {
     for (int row = row0; row <= row1; row++) {
       for (int col = col0; col <= col1; col++) {
         int i = row * world->width + col;
         Uint16 gid = pass == 0 ? world->ground[i] : world->top[i];
-        if (gid && (pass == 0 || is_flat(gid))) {
+        if (pass == 1 && open && in_house(open, col, row) && world->interior[i]) {
+          gid = world->interior[i];
+        } else if (pass == 1 && !is_flat(gid)) {
+          gid = 0;
+        }
+        if (gid) {
           sprite_draw(renderer, &tiles[gid], (float)(col * TILE_SIZE) - camX, (float)(row * TILE_SIZE) - camY);
         }
       }
@@ -280,7 +344,7 @@ static void render_world(Game *game, float camX, float camY, float t) {
   for (int row = row0; row <= row1; row++) {
     for (int col = col0; col <= col1; col++) {
       Uint16 gid = world->top[row * world->width + col];
-      if (!gid || is_flat(gid)) {
+      if (!gid || is_flat(gid) || (open && in_house(open, col, row))) {
         continue;
       }
       float base = is_building(gid) ? TILE_SIZE : 40;
@@ -294,7 +358,7 @@ static void render_world(Game *game, float camX, float camY, float t) {
   for (int i = 0; i < game->npcs.count; i++) {
     const Npc *npc = &game->npcs.items[i];
     float x = lerp(npc->prevX, npc->x, t), y = lerp(npc->prevY, npc->y, t);
-    if (!npc_visible(npc) || x < camX - TILE_SIZE || y < camY - TILE_SIZE ||
+    if (x < camX - TILE_SIZE || y < camY - TILE_SIZE ||
         x > camX + (float)game->engine.width + TILE_SIZE || y > camY + (float)game->engine.height + TILE_SIZE) {
       continue;
     }
@@ -319,13 +383,28 @@ static void render_world(Game *game, float camX, float camY, float t) {
     sprite_draw_flipped(renderer, d->sprite, d->x, d->y, d->flip);
   }
 
-  // the closest villager or pig says something
+  // the faded roof goes over everything inside
+  if (open) {
+    for (int row = open->y; row < open->y + open->h; row++) {
+      for (int col = open->x; col < open->x + open->w; col++) {
+        Uint16 gid = world->top[row * world->width + col];
+        if (gid && !is_flat(gid)) {
+          SDL_SetTextureAlphaModFloat(tiles[gid].texture, game->roofAlpha);
+          sprite_draw(renderer, &tiles[gid], (float)(col * TILE_SIZE) - camX, (float)(row * TILE_SIZE) - camY);
+          SDL_SetTextureAlphaModFloat(tiles[gid].texture, 1.0f);
+        }
+      }
+    }
+  }
+
+  // the closest villager or pig on the same side of the walls says something
   int closest = -1;
   float best = GREETING_DISTANCE * GREETING_DISTANCE;
+  int playerHouse = world_house_at(world, game->x, game->y);
   for (int i = 0; i < game->npcs.count; i++) {
     const Npc *npc = &game->npcs.items[i];
     float dx = npc->x - game->x, dy = npc->y - game->y;
-    if (npc_visible(npc) && dx * dx + dy * dy < best) {
+    if (dx * dx + dy * dy < best && world_house_at(world, npc->x, npc->y) == playerHouse) {
       best = dx * dx + dy * dy;
       closest = i;
     }
@@ -368,7 +447,7 @@ static void render_minimap(Game *game, float t) {
   SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
   for (int i = 0; i < game->npcs.count; i++) {
     const Npc *npc = &game->npcs.items[i];
-    if (npc_visible(npc) && npc->kind == NPC_VILLAGER) {
+    if (npc->state != NPC_INSIDE && npc->kind == NPC_VILLAGER) {
       SDL_RenderFillRect(renderer, &(SDL_FRect){map.x + npc->x / TILE_SIZE * scale - 0.5f,
                                                 map.y + npc->y / TILE_SIZE * scale - 0.5f, 1.5f, 1.5f});
     }
@@ -443,6 +522,7 @@ static void render_game(Game *game, Uint64 now) {
   float camX = SDL_roundf(SDL_clamp(x - (float)game->engine.width / 2, 0, maxCamX));
   float camY = SDL_roundf(SDL_clamp(y - 16 - (float)game->engine.height / 2, 0, maxCamY));
 
+  update_roof(game, now);
   SDL_SetRenderDrawColor(game->engine.renderer, 0x70, 0xc8, 0x40, 0xff);
   SDL_RenderClear(game->engine.renderer);
   render_world(game, camX, camY, t);
@@ -457,6 +537,7 @@ static void start_game(Game *game, Uint64 now) {
   game->accumulator = 0;
   game->fpsTimer = now;
   game->bannerShownAt = now;
+  game->lastFrame = now;
 }
 
 // ---------------------------------------------------------------- callbacks

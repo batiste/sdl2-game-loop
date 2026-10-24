@@ -117,7 +117,7 @@ int path_find(const PathQuery *q, int *out, int maxOut) {
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
         continue;
       }
-      float step = q->cost(q->ctx, nx, ny);
+      float step = q->cost(q->ctx, x, y, nx, ny);
       if (step < 0) {
         continue;
       }

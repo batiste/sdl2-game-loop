@@ -5,7 +5,9 @@
 
   Villagers live in a house. They come out, walk the roads to the plaza,
   visit neighbours, wander around, sometimes travel to another village, and
-  go back inside for a while. Pigs just potter around their village.
+  go back inside for a while: they really walk in through the door and
+  stand in the room, hidden by the roof unless the player is inside too.
+  Pigs just potter around their village.
  */
 
 #include "npc.h"
@@ -23,20 +25,6 @@ static int seconds(Npc *npc, float min, float max) {
   return (int)((min + SDL_randf_r(&npc->rng) * (max - min)) * TICKS_PER_SECOND);
 }
 
-static float cell_center_x(int x) {
-  return (float)(x * TILE_SIZE + TILE_SIZE / 2);
-}
-
-static float cell_feet_y(int y) {
-  return (float)(y * TILE_SIZE + 34);
-}
-
-// Point just past the door: walking there takes the villager behind the wall.
-static void door_point(const House *house, float *x, float *y) {
-  *x = cell_center_x(house->doorX);
-  *y = (float)(house->doorY * TILE_SIZE - 6);
-}
-
 static bool walk_to(Npc *npc, const World *world, int gx, int gy) {
   int sx = (int)(npc->x / TILE_SIZE), sy = (int)(npc->y / TILE_SIZE);
   if (sx == gx && sy == gy) {
@@ -50,22 +38,39 @@ static bool walk_to(Npc *npc, const World *world, int gx, int gy) {
   npc->pathPos = 1;
   npc->state = NPC_WALKING;
   int cell = npc->path[1];
-  npc->targetX = cell_center_x(cell % world->width);
-  npc->targetY = cell_feet_y(cell / world->width);
+  npc->targetX = world_cell_feet_x(cell % world->width);
+  npc->targetY = world_cell_feet_y(cell / world->width);
   return true;
 }
 
+// A walkable cell outside the houses.
 static bool random_cell_near(Npc *npc, const World *world, int cx, int cy, int radius, int *ox, int *oy) {
   for (int attempt = 0; attempt < 20; attempt++) {
     int x = cx - radius + rnd(npc, 2 * radius + 1);
     int y = cy - radius + rnd(npc, 2 * radius + 1);
-    if (world_walkable(world, x, y)) {
+    if (world_walkable(world, x, y) && world->houseAt[y * world->width + x] < 0) {
       *ox = x;
       *oy = y;
       return true;
     }
   }
   return false;
+}
+
+// A random spot in the room (reservoir sampling over the walkable cells),
+// below the first row so heads don't stick out of the roof.
+static bool spot_in_house(Npc *npc, const World *world, const House *house, int *ox, int *oy) {
+  int count = 0;
+  for (int y = house->y + 1; y < house->y + house->h; y++) {
+    for (int x = house->x; x < house->x + house->w; x++) {
+      bool inside = world_house_at(world, world_cell_feet_x(x), world_cell_feet_y(y)) >= 0;
+      if (inside && world_walkable(world, x, y) && rnd(npc, ++count) == 0) {
+        *ox = x;
+        *oy = y;
+      }
+    }
+  }
+  return count > 0;
 }
 
 static void choose_goal(Npc *npc, const World *world) {
@@ -103,18 +108,15 @@ static void choose_goal(Npc *npc, const World *world) {
       ok = random_cell_near(npc, world, cx, cy, 6, &gx, &gy);
     }
     if (npc->house >= 0) {
-      const House *house = &world->houses[npc->house];
-      gx = house->doorX;
-      gy = house->doorY;
-      ok = true;
+      ok = spot_in_house(npc, world, &world->houses[npc->house], &gx, &gy);
     }
   }
 
   if (!ok || !walk_to(npc, world, gx, gy)) {
     if (ok && npc->house >= 0) {
-      // already standing at the door
-      npc->state = NPC_ENTERING;
-      door_point(&world->houses[npc->house], &npc->targetX, &npc->targetY);
+      // already standing there
+      npc->state = NPC_INSIDE;
+      npc->timer = seconds(npc, 4, 15);
       return;
     }
     npc->house = -1;
@@ -154,6 +156,7 @@ static void update_npc(Npc *npc, const World *world) {
 
   switch (npc->state) {
     case NPC_IDLE:
+    case NPC_INSIDE:
       if (--npc->timer <= 0) {
         choose_goal(npc, world);
       }
@@ -163,41 +166,17 @@ static void update_npc(Npc *npc, const World *world) {
       if (step_towards(npc, speed)) {
         if (++npc->pathPos < npc->pathLen) {
           int cell = npc->path[npc->pathPos];
-          npc->targetX = cell_center_x(cell % world->width);
-          npc->targetY = cell_feet_y(cell / world->width);
+          npc->targetX = world_cell_feet_x(cell % world->width);
+          npc->targetY = world_cell_feet_y(cell / world->width);
         } else if (npc->house >= 0) {
-          npc->state = NPC_ENTERING;
-          door_point(&world->houses[npc->house], &npc->targetX, &npc->targetY);
+          npc->state = NPC_INSIDE;
+          npc->village = world->houses[npc->house].village;
+          npc->dir = DIR_DOWN;
+          npc->timer = seconds(npc, 4, 15);
         } else {
           npc->state = NPC_IDLE;
           npc->timer = npc->kind == NPC_PIG ? seconds(npc, 1, 5) : seconds(npc, 1, 4);
         }
-      }
-      break;
-
-    case NPC_ENTERING:
-      if (step_towards(npc, speed)) {
-        npc->state = NPC_INSIDE;
-        npc->village = world->houses[npc->house].village;
-        npc->timer = seconds(npc, 4, 15);
-      }
-      break;
-
-    case NPC_INSIDE:
-      if (--npc->timer <= 0) {
-        const House *house = &world->houses[npc->house];
-        npc->state = NPC_EXITING;
-        door_point(house, &npc->x, &npc->y);
-        npc->prevX = npc->x;
-        npc->prevY = npc->y;
-        npc->targetX = cell_center_x(house->doorX);
-        npc->targetY = cell_feet_y(house->doorY);
-      }
-      break;
-
-    case NPC_EXITING:
-      if (step_towards(npc, speed)) {
-        choose_goal(npc, world);
       }
       break;
   }
@@ -213,6 +192,11 @@ static Npc *add_npc(Npcs *npcs, NpcKind kind, int village, Uint64 seed) {
   *npc = (Npc){.kind = kind, .village = village, .home = -1, .house = -1,
                .path = path, .rng = seed, .dir = DIR_DOWN};
   return npc;
+}
+
+static void place(Npc *npc, int x, int y) {
+  npc->x = npc->prevX = world_cell_feet_x(x);
+  npc->y = npc->prevY = world_cell_feet_y(y);
 }
 
 bool npcs_spawn(Npcs *npcs, const World *world, Uint64 seed) {
@@ -235,10 +219,12 @@ bool npcs_spawn(Npcs *npcs, const World *world, Uint64 seed) {
       npc->look = SDL_rand_r(&rng, NUM_VILLAGER_LOOKS);
       npc->home = h;
       npc->house = h;
-      // start inside, coming out at different times
+      // start at home, coming out at different times
+      int x = house->doorX, y = house->doorY;
+      spot_in_house(npc, world, house, &x, &y);
+      place(npc, x, y);
       npc->state = NPC_INSIDE;
       npc->timer = SDL_rand_r(&rng, 4 * TICKS_PER_SECOND);
-      door_point(house, &npc->x, &npc->y);
     }
   }
 
@@ -255,8 +241,7 @@ bool npcs_spawn(Npcs *npcs, const World *world, Uint64 seed) {
         x = village->centerX;
         y = village->centerY;
       }
-      npc->x = npc->prevX = cell_center_x(x);
-      npc->y = npc->prevY = cell_feet_y(y);
+      place(npc, x, y);
       npc->timer = SDL_rand_r(&rng, 3 * TICKS_PER_SECOND);
     }
   }
