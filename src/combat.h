@@ -108,7 +108,7 @@ typedef struct Slash {
 typedef enum WaveState { WAVE_CALM, WAVE_ATTACK } WaveState;
 
 #define MAX_SHOTS 256
-#define MAX_SOULS 512
+#define MAX_SOULS 1024
 #define MAX_DEBRIS 128
 #define MAX_SLASHES 8
 

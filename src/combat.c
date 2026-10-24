@@ -14,7 +14,7 @@
 #include <float.h>
 
 #define TICKS_PER_SECOND 50
-#define MAX_MONSTERS 160
+#define MAX_MONSTERS 400
 
 #define HERO_HP 50
 #define FIELD_TICKS 25  // how often the way to the hero is worked out again
@@ -23,8 +23,8 @@
 #define CALM_DELAY (15 * TICKS_PER_SECOND)
 
 // difficulty
-#define WAVE_BASE 6             // demons in a wave: WAVE_BASE + WAVE_GROWTH * wave
-#define WAVE_GROWTH 6
+#define WAVE_BASE 35            // demons in a wave: WAVE_BASE + WAVE_GROWTH * wave
+#define WAVE_GROWTH 15
 #define WAVE_TOUGHNESS 0.2f     // extra health per wave
 #define LORDS_PER_WAVE 0.1f     // share of lords grows with each wave...
 #define MAX_LORDS 0.4f          // ...up to this
@@ -297,13 +297,13 @@ static void update_waves(Combat *c, const World *world, float heroX, float heroY
   }
 
   if (c->toSpawn > 0 && --c->spawnTimer <= 0) {
-    c->spawnTimer = (int)(0.6f * TICKS_PER_SECOND);
-    int pack = SDL_min(c->toSpawn, 2 + rnd(c, 3));
+    c->spawnTimer = (int)(0.4f * TICKS_PER_SECOND);
+    int pack = SDL_min(c->toSpawn, 3 + rnd(c, 4));
     float lords = SDL_min(MAX_LORDS, LORDS_PER_WAVE * (float)c->wave);
     if (spawn_pack(c, world, pack, rndf(c) < lords ? MON_LORD : MON_UNDERLING)) {
       c->toSpawn -= pack;
     }
-    if (c->bossPending && c->toSpawn <= c->wave * 2 && spawn_pack(c, world, 1, MON_BOSS)) {
+    if (c->bossPending && c->toSpawn <= WAVE_GROWTH * c->wave / 2 && spawn_pack(c, world, 1, MON_BOSS)) {
       c->bossPending = false;
       c->bossAlive = true;
     }
