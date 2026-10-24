@@ -11,6 +11,12 @@ void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y)
   SDL_RenderTexture(renderer, sprite->texture, &sprite->source, &dest);
 }
 
+void sprite_draw_flipped(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, bool flip) {
+  SDL_FRect dest = {x, y, sprite->source.w, sprite->source.h};
+  SDL_RenderTextureRotated(renderer, sprite->texture, &sprite->source, &dest, 0, NULL,
+                           flip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
+}
+
 Animation *animation_create(SDL_Texture *texture, SDL_Rect first, int ticksPerFrame, int numFrames) {
   float texW, texH;
   SDL_GetTextureSize(texture, &texW, &texH);

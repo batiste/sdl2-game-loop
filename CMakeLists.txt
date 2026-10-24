@@ -16,14 +16,16 @@ find_package(SDL3 REQUIRED CONFIG)
 find_package(SDL3_image REQUIRED CONFIG)
 find_package(SDL3_ttf REQUIRED CONFIG)
 find_package(SDL3_mixer REQUIRED CONFIG)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(MXML REQUIRED IMPORTED_TARGET mxml4)
 
 add_executable(game
   src/main.c
+  src/atlas.c
   src/engine.c
+  src/npc.c
+  src/pathfind.c
   src/sprite.c
-  src/tmx.c
+  src/world.c
+  src/worldgen.c
 )
 
 target_link_libraries(game PRIVATE
@@ -31,7 +33,6 @@ target_link_libraries(game PRIVATE
   SDL3_image::SDL3_image
   SDL3_ttf::SDL3_ttf
   SDL3_mixer::SDL3_mixer
-  PkgConfig::MXML
 )
 
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")

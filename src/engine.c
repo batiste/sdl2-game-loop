@@ -122,6 +122,28 @@ SDL_Texture *engine_load_texture(Engine *engine, const char *relative) {
   return texture;
 }
 
+SDL_Surface *engine_load_surface(const char *relative) {
+  char *path = engine_asset_path(relative);
+  SDL_Surface *loaded = IMG_Load(path);
+  SDL_Surface *surface = loaded ? SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32) : NULL;
+  if (!surface) {
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't load %s: %s", path, SDL_GetError());
+  }
+  SDL_DestroySurface(loaded);
+  SDL_free(path);
+  return surface;
+}
+
+SDL_Texture *engine_texture_from_surface(Engine *engine, SDL_Surface *surface) {
+  SDL_Texture *texture = SDL_CreateTextureFromSurface(engine->renderer, surface);
+  if (texture) {
+    track(engine, RESOURCE_TEXTURE, texture);
+  } else {
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create texture: %s", SDL_GetError());
+  }
+  return texture;
+}
+
 TTF_Font *engine_load_font(Engine *engine, const char *relative, float size) {
   char *path = engine_asset_path(relative);
   TTF_Font *font = TTF_OpenFont(path, size);

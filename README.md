@@ -1,22 +1,29 @@
 # Game skeleton
 
-A small 2D game loop written in C with [SDL3](https://libsdl.org). It loads and
-displays a TMX map made with the [Tiled](https://www.mapeditor.org) editor, and
-lets you walk a character around it, with collisions, animations and sound.
+A small 2D game written in C with [SDL3](https://libsdl.org). Every world is
+procedurally generated from a seed: lakes, forests, villages connected by
+roads, and villagers going about their day.
 
 ![Screenshot](assets/shot.png)
 
 ## Features
 
-- SDL3 main callbacks (`SDL_AppInit` / `SDL_AppIterate` / ...)
-- Fixed-timestep physics (50 Hz) with interpolated rendering, so the game runs
-  at the same speed with vsync on or with an uncapped frame rate
+- **Procedural worlds** (160×160 tiles) from a seed
+  - lakes and forests from fractal noise
+  - 7–8 villages, each with a plaza, 4–8 houses and a footpath to every door
+  - roads between villages: a minimum spanning tree plus a few shortcuts,
+    routed with A\* so they wind around lakes, houses and forests
+  - water and path tiles autotiled with proper edges and corners
+  - gardens with fences and flower beds, village signs, reeds, lily pads
+- **Villagers** with different shirt colours live in the houses. They come
+  out, walk the roads to the plaza, visit neighbours, sometimes travel to
+  another village, and go back inside. Pigs potter around the villages.
+- Depth-sorted rendering, so characters walk behind trees and houses
+- Village name banner when you arrive, greetings from nearby villagers, minimap
+- Fixed-timestep simulation (50 Hz) with interpolated rendering; same game
+  speed with vsync on or an uncapped frame rate
 - Fixed logical resolution (800×600), letterboxed into a resizable,
   HiDPI-aware window with crisp pixel-art scaling
-- TMX reader: embedded tilesets (with margin/spacing), tile layers in XML or
-  CSV encoding, object groups and object properties
-- Camera that follows the character and stays inside the map
-- Only the visible tiles are drawn
 
 ## Controls
 
@@ -24,20 +31,23 @@ lets you walk a character around it, with collisions, animations and sound.
 | ------------------- | ------------------------------- |
 | W A S D / arrows    | Move (physical keys, so it works on AZERTY too) |
 | Space               | Sword                           |
+| R                   | Generate a new world            |
+| M                   | Toggle the minimap              |
 | C                   | Toggle vsync / uncapped FPS     |
 | Esc                 | Quit                            |
 
-Any key skips the splash screen.
+Any key skips the splash screen. Start on a given world with
+`./build/game --seed 42`; the current seed is shown at the bottom of the screen.
 
 ## Building
 
-Requirements: a C17 compiler, CMake ≥ 3.24, pkg-config, SDL3, SDL3_image,
-SDL3_ttf, SDL3_mixer (3.x) and [Mini-XML](https://www.msweet.org/mxml/) 4.
+Requirements: a C17 compiler, CMake ≥ 3.24, SDL3, SDL3_image, SDL3_ttf and
+SDL3_mixer (3.x).
 
 ### macOS
 
 ```sh
-brew install cmake pkg-config sdl3 sdl3_image sdl3_ttf sdl3_mixer libmxml
+brew install cmake sdl3 sdl3_image sdl3_ttf sdl3_mixer
 cmake -S . -B build
 cmake --build build
 ./build/game
@@ -61,17 +71,28 @@ Assets are copied next to the executable at build time and located with
 
 ## Tilesets
 
-`assets/ground.png` and `assets/tiles.png` are the original hand-drawn tiles.
-`assets/nature.png` (water, path, bushes, rocks, flowers, fences...) is
-generated in the same style by `tools/gen_nature_tiles.py`; edit the script and
-re-run it with Pillow installed (`pip install pillow`) to tweak or add tiles.
-The tile layout is documented at the top of the script.
+| File                | Contents                                           |
+| ------------------- | -------------------------------------------------- |
+| `assets/ground.png` | grass variants and the palm tree                   |
+| `assets/tiles.png`  | houses, the pig; its grass is made transparent at load time |
+| `assets/nature.png` | water, path, bushes, rocks, flowers, fences...     |
+| `assets/character.png` | player sprite sheet; villagers are recoloured copies |
+
+`assets/nature.png` is generated in the style of the original art by
+`tools/gen_nature_tiles.py`; edit the script and re-run it with Pillow
+installed (`pip install pillow`) to tweak or add tiles. Tile ids for all
+tilesets are defined in `src/tiles.h`.
 
 ## Layout
 
-| File           | Purpose                                              |
-| -------------- | ---------------------------------------------------- |
-| `src/main.c`   | Game state, update loop and rendering                |
-| `src/engine.*` | Window, renderer, audio, asset loading and cleanup   |
-| `src/sprite.*` | Sprites and sprite-sheet animations                  |
-| `src/tmx.*`    | TMX map parser                                       |
+| File             | Purpose                                              |
+| ---------------- | ---------------------------------------------------- |
+| `src/main.c`     | Game loop, player, camera, rendering and HUD         |
+| `src/worldgen.c` | Procedural world generation                          |
+| `src/world.*`    | World data, collisions and walker path finding       |
+| `src/npc.*`      | Villager and pig behaviour                           |
+| `src/pathfind.*` | Generic A\* on a grid                                |
+| `src/atlas.*`    | Tilesets, recoloured villagers, the pig              |
+| `src/engine.*`   | Window, renderer, audio, asset loading and cleanup   |
+| `src/sprite.*`   | Sprites and sprite-sheet animations                  |
+| `src/tiles.h`    | Tile ids                                             |

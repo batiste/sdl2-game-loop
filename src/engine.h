@@ -43,6 +43,11 @@ SDL_Texture *engine_load_texture(Engine *engine, const char *relative);
 TTF_Font *engine_load_font(Engine *engine, const char *relative, float size);
 MIX_Audio *engine_load_audio(Engine *engine, const char *relative);
 
+// Load an image as an RGBA32 surface for pixel edits. Caller owns it.
+SDL_Surface *engine_load_surface(const char *relative);
+// Upload a surface; the engine owns the texture, the caller keeps the surface.
+SDL_Texture *engine_texture_from_surface(Engine *engine, SDL_Surface *surface);
+
 // Render black text with a white drop shadow. Caller owns the texture.
 SDL_Texture *engine_render_text(Engine *engine, TTF_Font *font, const char *text);
 

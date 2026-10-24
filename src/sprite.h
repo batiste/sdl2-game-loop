@@ -21,6 +21,7 @@ typedef struct Animation {
 } Animation;
 
 void sprite_draw(SDL_Renderer *renderer, const Sprite *sprite, float x, float y);
+void sprite_draw_flipped(SDL_Renderer *renderer, const Sprite *sprite, float x, float y, bool flip);
 
 // Build an animation from `numFrames` consecutive cells of a sprite sheet row,
 // starting at `first`. numFrames == 0 uses every cell until the texture edge.
