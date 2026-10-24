@@ -42,6 +42,7 @@ typedef enum CombatEvent {
   EV_WAVE_STARTED = 1 << 5,
   EV_WAVE_CLEARED = 1 << 6,
   EV_MONSTER_DIED = 1 << 7,
+  EV_HERO_HURT = 1 << 8,
 } CombatEvent;
 
 typedef struct Hero {

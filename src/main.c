@@ -47,6 +47,7 @@
 #define DEATH_VOICES 4          // death sounds playing at the same time, at most
 #define DEATH_SOUND_TICKS 3     // and not more often than this
 #define DEATH_GAIN 0.5f
+#define HURT_GAIN 0.8f
 
 static const char *const GREETINGS[] = {"Hello!", "Nice day!", "Hi there!", "Welcome!", "Lovely weather.", "Oh, hi."};
 #define NUM_GREETINGS ((int)SDL_arraysize(GREETINGS))
@@ -93,6 +94,8 @@ typedef struct Game {
   MIX_Audio *deathSounds[3];
   MIX_Audio *bossDeath;
   MIX_Track *deathTracks[DEATH_VOICES];
+  MIX_Audio *hurtSound;
+  MIX_Track *hurtTrack;
   Uint64 lastDeathSound;
   // village music when calm, combat music during waves
   MIX_Audio *music[3];
@@ -438,6 +441,9 @@ static void update(Game *game) {
   }
   if ((events & EV_SLASH) && game->sfxTrack && !MIX_TrackPlaying(game->sfxTrack)) {
     MIX_PlayTrack(game->sfxTrack, 0);
+  }
+  if ((events & EV_HERO_HURT) && game->hurtTrack) {
+    MIX_PlayTrack(game->hurtTrack, 0);
   }
   if (events & EV_BOSS_KILLED) {
     play_death(game, game->bossDeath);
@@ -1194,6 +1200,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     game->deathSounds[i] = engine_load_audio(engine, file, true);
   }
   game->bossDeath = engine_load_audio(engine, "demon-death-boss.wav", true);
+  game->hurtSound = engine_load_audio(engine, "hero-hurt.wav", true);
+  game->hurtTrack = game->hurtSound ? MIX_CreateTrack(engine->mixer) : NULL;
+  if (game->hurtTrack) {
+    MIX_SetTrackAudio(game->hurtTrack, game->hurtSound);
+    MIX_SetTrackGain(game->hurtTrack, HURT_GAIN);
+  }
   for (int i = 0; engine->mixer && i < DEATH_VOICES; i++) {
     game->deathTracks[i] = MIX_CreateTrack(engine->mixer);
     if (game->deathTracks[i]) {
@@ -1362,6 +1374,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     if (game->deathTracks[i]) {
       MIX_DestroyTrack(game->deathTracks[i]);
     }
+  }
+  if (game->hurtTrack) {
+    MIX_DestroyTrack(game->hurtTrack);
   }
   TextSlot *slots[] = {&game->fpsText, &game->infoText, &game->hpText, &game->statusText, &game->villagersText,
                        &game->buttonText};

@@ -230,6 +230,7 @@ static void hurt_hero(Combat *c, float damage) {
     return;
   }
   popup(c, 0, -46, SDL_ceilf(damage), true);  // follows the hero, see main.c
+  c->events |= EV_HERO_HURT;
   h->hp = SDL_max(0, h->hp - (int)SDL_ceilf(damage));
   h->invulnerable = HERO_INVULNERABLE;
   if (h->hp == 0) {
