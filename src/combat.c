@@ -106,7 +106,7 @@ int combat_alive_monsters(const Combat *c) {
 void combat_init(Combat *c, Uint64 seed) {
   combat_free(c);
   *c = (Combat){.rng = seed ^ 0xd1b54a32d192ed03ull};
-  c->hero = (Hero){.hp = HERO_HP, .maxHp = HERO_HP, .nextLevel = 4};
+  c->hero = (Hero){.hp = HERO_HP, .maxHp = HERO_HP, .nextLevel = 10};
   c->hero.levels[UP_SWORD] = 1;
   c->waveState = WAVE_CALM;
   c->waveTimer = FIRST_WAVE_DELAY;
@@ -173,6 +173,7 @@ static void kill_monster(Combat *c, int i) {
     add_soul(c, m->x + 10, m->y, 0);  // a heart
   }
   c->kills++;
+  c->events |= EV_MONSTER_DIED;
   remove_monster(c, i);
 }
 
@@ -681,7 +682,7 @@ static void update_souls(Combat *c, float hx, float hy) {
   while (h->xp >= h->nextLevel) {
     h->xp -= h->nextLevel;
     h->level++;
-    h->nextLevel = 4 + h->level * 4;
+    h->nextLevel = 10 + h->level * 10;
     h->pendingLevels++;
   }
   if (h->pendingLevels > 0) {
@@ -764,16 +765,17 @@ const char *upgrade_name(Upgrade u) {
   return NAMES[u];
 }
 
+// The pixel font has no $ % ( ) / @ \ ^ _ characters: keep them out of texts.
 const char *upgrade_description(Upgrade u) {
   static const char *const TEXT[] = {
       [UP_SWORD] = "Stronger, wider slashes. Slashes both ways from level 3.",
       [UP_STONES] = "Throws stones at the nearest demons.",
       [UP_FLAMES] = "Flames circle around you and burn demons.",
       [UP_AURA] = "Blessed ground hurts demons around you.",
-      [UP_SPEED] = "Move 10% faster.",
+      [UP_SPEED] = "Move a tenth faster.",
       [UP_VITALITY] = "15 more health, and heal faster.",
-      [UP_MIGHT] = "All weapons deal 20% more damage.",
-      [UP_HASTE] = "All weapons attack 8% more often.",
+      [UP_MIGHT] = "All weapons deal a fifth more damage.",
+      [UP_HASTE] = "All weapons attack a little more often.",
       [UP_MAGNET] = "Collect souls from further away.",
       [UP_HEAL] = "Restore 20 health.",
   };

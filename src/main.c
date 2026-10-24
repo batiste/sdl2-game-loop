@@ -43,6 +43,9 @@
 #define ROOF_FADE_PER_SECOND 4.0f
 #define DOOR_ASSIST 12  // pixels the player is nudged sideways towards a gap
 #define PANEL_WIDTH 600
+#define DEATH_VOICES 4          // death sounds playing at the same time, at most
+#define DEATH_SOUND_TICKS 3     // and not more often than this
+#define DEATH_GAIN 0.5f
 
 static const char *const GREETINGS[] = {"Hello!", "Nice day!", "Hi there!", "Welcome!", "Lovely weather.", "Oh, hi."};
 #define NUM_GREETINGS ((int)SDL_arraysize(GREETINGS))
@@ -68,7 +71,8 @@ typedef struct Drawable {
   SDL_Color tint;
 } Drawable;
 
-// a line of text that is only rendered again when it changes
+// a line of text that is only rendered again when it changes. The pixel font
+// has no $ % ( ) / @ \ ^ _ characters: keep them out of texts.
 typedef struct TextSlot {
   char text[160];
   SDL_Texture *texture;
@@ -85,6 +89,10 @@ typedef struct Game {
   TTF_Font *smallFont;
   MIX_Audio *swish;
   MIX_Track *sfxTrack;
+  MIX_Audio *deathSounds[3];
+  MIX_Audio *bossDeath;
+  MIX_Track *deathTracks[DEATH_VOICES];
+  Uint64 lastDeathSound;
   // village music when calm, combat music during waves
   MIX_Audio *music[2];
   MIX_Track *musicTrack[2];
@@ -270,9 +278,9 @@ static void open_level_up(Game *game) {
     if (u == UP_HEAL) {
       SDL_snprintf(line, sizeof(line), "%d   %s\n     %s\n\n", i + 1, upgrade_name(u), upgrade_description(u));
     } else if (level == 0) {
-      SDL_snprintf(line, sizeof(line), "%d   %s (new)\n     %s\n\n", i + 1, upgrade_name(u), upgrade_description(u));
+      SDL_snprintf(line, sizeof(line), "%d   %s - new\n     %s\n\n", i + 1, upgrade_name(u), upgrade_description(u));
     } else {
-      SDL_snprintf(line, sizeof(line), "%d   %s, level %d\n     %s\n\n", i + 1, upgrade_name(u), level + 1,
+      SDL_snprintf(line, sizeof(line), "%d   %s - level %d\n     %s\n\n", i + 1, upgrade_name(u), level + 1,
                    upgrade_description(u));
     }
     SDL_strlcat(body, line, sizeof(body));
@@ -346,6 +354,19 @@ static void update_banner(Game *game) {
   }
 }
 
+// A death sound on a free voice; skipped when they are all busy.
+static void play_death(Game *game, MIX_Audio *sound) {
+  for (int i = 0; sound && i < DEATH_VOICES; i++) {
+    MIX_Track *track = game->deathTracks[i];
+    if (track && !MIX_TrackPlaying(track)) {
+      MIX_SetTrackAudio(track, sound);
+      MIX_PlayTrack(track, 0);
+      game->lastDeathSound = game->tick;
+      return;
+    }
+  }
+}
+
 static void update(Game *game) {
   const bool *keys = SDL_GetKeyboardState(NULL);
   // scancodes are physical positions, so WASD also works on AZERTY keyboards
@@ -384,6 +405,11 @@ static void update(Game *game) {
   }
   if ((events & EV_SLASH) && game->sfxTrack && !MIX_TrackPlaying(game->sfxTrack)) {
     MIX_PlayTrack(game->sfxTrack, 0);
+  }
+  if (events & EV_BOSS_KILLED) {
+    play_death(game, game->bossDeath);
+  } else if ((events & EV_MONSTER_DIED) && game->tick - game->lastDeathSound >= DEATH_SOUND_TICKS) {
+    play_death(game, game->deathSounds[SDL_rand(3)]);
   }
   if (events & EV_MESSAGE) {
     show_banner(game, game->combat.message);
@@ -888,7 +914,7 @@ static void render_hud(Game *game, Uint64 now) {
   fill(renderer, 12, 16, 164, 16, (SDL_Color){34, 34, 34, 255});
   fill(renderer, 14, 18, 160, 12, (SDL_Color){90, 20, 20, 255});
   fill(renderer, 14, 18, 160.0f * (float)hero->hp / (float)hero->maxHp, 12, (SDL_Color){220, 50, 40, 255});
-  draw_text(game, &game->hpText, game->smallFont, 184, 14, "%d / %d   Level %d", hero->hp, hero->maxHp,
+  draw_text(game, &game->hpText, game->smallFont, 184, 14, "%d of %d   Level %d", hero->hp, hero->maxHp,
             hero->level + 1);
 
   if (c->waveState == WAVE_ATTACK) {
@@ -905,12 +931,12 @@ static void render_hud(Game *game, Uint64 now) {
       alive += !game->npcs.items[i].dead;
     }
   }
-  draw_text(game, &game->villagersText, game->smallFont, 12, 58, "Villagers %d / %d", alive, villagers);
+  draw_text(game, &game->villagersText, game->smallFont, 12, 58, "Villagers %d of %d", alive, villagers);
 
   draw_text(game, &game->infoText, game->smallFont, 12, (float)game->engine.height - 26,
             "Seed %" SDL_PRIu64 "   R: new world   M: map   N: music   C: vsync", game->seed);
   draw_text(game, &game->fpsText, game->smallFont, -12, (float)game->engine.height - 26, "%d fps%s", game->fps,
-            game->engine.vsync ? "" : " (uncapped)");
+            game->engine.vsync ? "" : ", uncapped");
 
   Uint64 shown = now - game->bannerShownAt;
   if (game->bannerText && shown < BANNER_NS) {
@@ -1083,6 +1109,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     game->sfxTrack = MIX_CreateTrack(engine->mixer);
     MIX_SetTrackAudio(game->sfxTrack, game->swish);
   }
+  for (int i = 0; i < 3; i++) {
+    char file[32];
+    SDL_snprintf(file, sizeof(file), "demon-death-%d.wav", i + 1);
+    game->deathSounds[i] = engine_load_audio(engine, file, true);
+  }
+  game->bossDeath = engine_load_audio(engine, "demon-death-boss.wav", true);
+  for (int i = 0; engine->mixer && i < DEATH_VOICES; i++) {
+    game->deathTracks[i] = MIX_CreateTrack(engine->mixer);
+    if (game->deathTracks[i]) {
+      MIX_SetTrackGain(game->deathTracks[i], DEATH_GAIN);
+    }
+  }
   load_music(game);
   play_music(game, MUSIC_VILLAGE);
 
@@ -1217,6 +1255,11 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   for (int i = 0; i < 2; i++) {
     if (game->musicTrack[i]) {
       MIX_DestroyTrack(game->musicTrack[i]);
+    }
+  }
+  for (int i = 0; i < DEATH_VOICES; i++) {
+    if (game->deathTracks[i]) {
+      MIX_DestroyTrack(game->deathTracks[i]);
     }
   }
   TextSlot *slots[] = {&game->fpsText, &game->infoText, &game->hpText, &game->statusText, &game->villagersText};
