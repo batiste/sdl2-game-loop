@@ -59,6 +59,14 @@ cmake --build build-asan
 Assets are copied next to the executable at build time and located with
 `SDL_GetBasePath()`, so the game can be launched from any directory.
 
+## Tilesets
+
+`assets/ground.png` and `assets/tiles.png` are the original hand-drawn tiles.
+`assets/nature.png` (water, path, bushes, rocks, flowers, fences...) is
+generated in the same style by `tools/gen_nature_tiles.py`; edit the script and
+re-run it with Pillow installed (`pip install pillow`) to tweak or add tiles.
+The tile layout is documented at the top of the script.
+
 ## Layout
 
 | File           | Purpose                                              |
