@@ -189,7 +189,7 @@ static void open_panel(Game *game, Scene scene, const char *title, const char *b
 // ---------------------------------------------------------------- world
 
 enum { MUSIC_VILLAGE, MUSIC_COMBAT, MUSIC_GAME_OVER, NUM_MUSIC };
-static void play_music(Game *game, int which);
+static void play_music(Game *game, int which, bool abrupt);
 
 static void build_minimap(Game *game) {
   static const SDL_Color COLORS[] = {
@@ -237,7 +237,7 @@ static bool new_world(Game *game, Uint64 seed) {
     return false;
   }
   combat_init(&game->combat, seed);
-  play_music(game, MUSIC_VILLAGE);
+  play_music(game, MUSIC_VILLAGE, false);
   SDL_Log("World %" SDL_PRIu64 ": %d villages, %d houses, %d inhabitants, generated in %.1f ms",
           seed, world->numVillages, world->numHouses, game->npcs.count,
           (double)(SDL_GetTicksNS() - start) / (double)SDL_NS_PER_MS);
@@ -416,15 +416,15 @@ static void update(Game *game) {
     show_banner(game, game->combat.message);
   }
   if (events & EV_WAVE_STARTED) {
-    play_music(game, MUSIC_COMBAT);
+    play_music(game, MUSIC_COMBAT, false);
   }
   if (events & EV_WAVE_CLEARED) {
-    play_music(game, MUSIC_VILLAGE);
+    play_music(game, MUSIC_VILLAGE, false);
   }
 
   if (events & EV_PLAYER_DIED) {
     open_game_over(game);
-    play_music(game, MUSIC_GAME_OVER);
+    play_music(game, MUSIC_GAME_OVER, true);
   } else if (events & EV_BOSS_KILLED) {
     open_victory(game);
   } else if (events & EV_LEVEL_UP) {
@@ -1026,14 +1026,14 @@ static void load_music(Game *game) {
   game->musicPlaying = -1;
 }
 
-// Fade out whatever plays and fade in another tune.
-static void play_music(Game *game, int which) {
+// Fade out whatever plays and fade in another tune, or cut straight to it.
+static void play_music(Game *game, int which, bool abrupt) {
   if (which == game->musicPlaying) {
     return;
   }
   if (game->musicPlaying >= 0 && game->musicTrack[game->musicPlaying]) {
     MIX_Track *old = game->musicTrack[game->musicPlaying];
-    MIX_StopTrack(old, MIX_TrackMSToFrames(old, MUSIC_FADE_OUT_MS));
+    MIX_StopTrack(old, abrupt ? 0 : MIX_TrackMSToFrames(old, MUSIC_FADE_OUT_MS));
   }
   game->musicPlaying = which;
   MIX_Track *track = game->musicTrack[which];
@@ -1043,7 +1043,7 @@ static void play_music(Game *game, int which) {
   SDL_PropertiesID options = SDL_CreateProperties();
   // the game over tune plays once, the others loop
   SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, which == MUSIC_GAME_OVER ? 0 : -1);
-  SDL_SetNumberProperty(options, MIX_PROP_PLAY_FADE_IN_MILLISECONDS_NUMBER, MUSIC_FADE_IN_MS);
+  SDL_SetNumberProperty(options, MIX_PROP_PLAY_FADE_IN_MILLISECONDS_NUMBER, abrupt ? 0 : MUSIC_FADE_IN_MS);
   if (!MIX_PlayTrack(track, options)) {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Couldn't play music: %s", SDL_GetError());
   }
@@ -1125,7 +1125,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     }
   }
   load_music(game);
-  play_music(game, MUSIC_VILLAGE);
+  play_music(game, MUSIC_VILLAGE, false);
 
   if (!new_world(game, seed)) {
     return SDL_APP_FAILURE;
