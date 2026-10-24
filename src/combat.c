@@ -32,6 +32,10 @@
 #define SWORD_RANGE_LEVEL 6     // ...and per level above
 #define SWORD_ARC 0.6f          // half of the swing at level 1, in radians...
 #define SWORD_ARC_LEVEL 0.1f    // ...and per level above
+#define SWORD_PUSH 9.0f         // knockback of a sword hit (about 4 times this in pixels)
+#define SWORD_SHOVE 4.0f        // and of the demons just out of reach, unhurt
+#define SWORD_SHOVE_REACH 22.0f // how far out of reach the shove goes
+#define STAGGER_TICKS 8         // a demon hit by the sword stops walking this long
 #define REGEN_TICKS 300         // one health point every so many ticks
 #define HEART_CHANCE 0.006f
 #define HEART_HEAL 10
@@ -467,6 +471,10 @@ static void update_monster(Combat *c, const World *world, Npcs *npcs, int i, flo
     m->kickX *= 0.75f;
     m->kickY *= 0.75f;
   }
+  if (m->stagger > 0) {
+    m->stagger--;
+    return;  // reeling from a blow
+  }
 
   if (--m->retarget <= 0) {
     m->retarget = 15;
@@ -589,7 +597,12 @@ static void use_sword(Combat *c, float hx, float hy) {
       float dx = m->x - hx, dy = m->y - 12 - (hy - 12), d = SDL_sqrtf(dx * dx + dy * dy);
       float diff = SDL_fabsf(SDL_fmodf(SDL_atan2f(dy, dx) - a + 3 * SDL_PI_F, 2 * SDL_PI_F) - SDL_PI_F);
       if (d < range + INFO[m->kind].radius && diff < arc) {
-        hit_monster(c, i, damage, hx, hy, 6);
+        m->stagger = STAGGER_TICKS;  // set first: hit_monster may remove it
+        hit_monster(c, i, damage, hx, hy, SWORD_PUSH);
+      } else if (d < range + SWORD_SHOVE_REACH + INFO[m->kind].radius && diff < arc && m->kind != MON_BOSS) {
+        // the front of the crowd is pushed back too
+        m->kickX += dx / SDL_max(d, 1.0f) * SWORD_SHOVE;
+        m->kickY += dy / SDL_max(d, 1.0f) * SWORD_SHOVE;
       }
     }
   }

@@ -76,6 +76,7 @@ typedef struct Monster {
   int wanderTimer;
   int stuck;  // ticks without progress towards the hero
   float flank;  // -1..1: which way and how far round the hero it swings
+  int stagger;  // ticks left reeling from a blow, not walking
 } Monster;
 
 typedef struct Shot {
