@@ -95,8 +95,8 @@ typedef struct Game {
   MIX_Track *deathTracks[DEATH_VOICES];
   Uint64 lastDeathSound;
   // village music when calm, combat music during waves
-  MIX_Audio *music[2];
-  MIX_Track *musicTrack[2];
+  MIX_Audio *music[3];
+  MIX_Track *musicTrack[3];
   int musicPlaying;
   bool musicMuted;
 
@@ -188,7 +188,7 @@ static void open_panel(Game *game, Scene scene, const char *title, const char *b
 
 // ---------------------------------------------------------------- world
 
-enum { MUSIC_VILLAGE, MUSIC_COMBAT };
+enum { MUSIC_VILLAGE, MUSIC_COMBAT, MUSIC_GAME_OVER, NUM_MUSIC };
 static void play_music(Game *game, int which);
 
 static void build_minimap(Game *game) {
@@ -424,6 +424,7 @@ static void update(Game *game) {
 
   if (events & EV_PLAYER_DIED) {
     open_game_over(game);
+    play_music(game, MUSIC_GAME_OVER);
   } else if (events & EV_BOSS_KILLED) {
     open_victory(game);
   } else if (events & EV_LEVEL_UP) {
@@ -1012,9 +1013,9 @@ static void render_game(Game *game, Uint64 now) {
 
 // Background music, streamed and looping. The game works without it.
 static void load_music(Game *game) {
-  static const char *const FILES[] = {"village-music-1.mp3", "combat-music-1.mp3"};
+  static const char *const FILES[NUM_MUSIC] = {"village-music-1.mp3", "combat-music-1.mp3", "game-over.mp3"};
   Engine *engine = &game->engine;
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < NUM_MUSIC; i++) {
     game->music[i] = engine_load_audio(engine, FILES[i], false);
     game->musicTrack[i] = game->music[i] ? MIX_CreateTrack(engine->mixer) : NULL;
     if (game->musicTrack[i]) {
@@ -1040,7 +1041,8 @@ static void play_music(Game *game, int which) {
     return;
   }
   SDL_PropertiesID options = SDL_CreateProperties();
-  SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, -1);
+  // the game over tune plays once, the others loop
+  SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, which == MUSIC_GAME_OVER ? 0 : -1);
   SDL_SetNumberProperty(options, MIX_PROP_PLAY_FADE_IN_MILLISECONDS_NUMBER, MUSIC_FADE_IN_MS);
   if (!MIX_PlayTrack(track, options)) {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Couldn't play music: %s", SDL_GetError());
@@ -1053,7 +1055,7 @@ static void play_music(Game *game, int which) {
 
 static void toggle_music(Game *game) {
   game->musicMuted = !game->musicMuted;
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < NUM_MUSIC; i++) {
     if (game->musicTrack[i]) {
       if (game->musicMuted) {
         MIX_PauseTrack(game->musicTrack[i]);
@@ -1262,7 +1264,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   if (game->sfxTrack) {
     MIX_DestroyTrack(game->sfxTrack);
   }
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < NUM_MUSIC; i++) {
     if (game->musicTrack[i]) {
       MIX_DestroyTrack(game->musicTrack[i]);
     }
