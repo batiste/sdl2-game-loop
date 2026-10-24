@@ -75,6 +75,7 @@ typedef struct Monster {
   float wanderX, wanderY;
   int wanderTimer;
   int stuck;  // ticks without progress towards the hero
+  float flank;  // -1..1: which way and how far round the hero it swings
 } Monster;
 
 typedef struct Shot {
@@ -168,5 +169,8 @@ const char *upgrade_name(Upgrade upgrade);
 const char *upgrade_description(Upgrade upgrade);
 
 int combat_alive_monsters(const Combat *combat);
+
+// Skip the rest of the calm and start the next wave now.
+void combat_next_wave(Combat *combat);
 
 #endif

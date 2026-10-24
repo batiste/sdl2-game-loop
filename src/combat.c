@@ -26,18 +26,22 @@
 #define WAVE_BASE 35            // demons in a wave: WAVE_BASE + WAVE_GROWTH * wave
 #define WAVE_GROWTH 15
 #define WAVE_TOUGHNESS 0.2f     // extra health per wave
-#define LORDS_PER_WAVE 0.1f     // share of lords grows with each wave...
+#define LORDS_PER_WAVE 0.06f    // share of lords grows with each wave after the first...
 #define MAX_LORDS 0.4f          // ...up to this
 #define SWORD_RANGE 44          // reach at level 1, in pixels...
 #define SWORD_RANGE_LEVEL 6     // ...and per level above
 #define SWORD_ARC 0.6f          // half of the swing at level 1, in radians...
 #define SWORD_ARC_LEVEL 0.1f    // ...and per level above
 #define REGEN_TICKS 300         // one health point every so many ticks
-#define HEART_CHANCE 0.02f
+#define HEART_CHANCE 0.006f
 #define HEART_HEAL 10
 #define SCARE_RADIUS 260.0f
 #define VILLAGER_SENSE 90.0f  // demons bite villagers this close on their way
 #define CHASE_DIRECT 220.0f   // closer than this, demons go straight for their prey
+#define SURROUND_RANGE 170.0f // closer than this, underlings spread out around the hero...
+#define SURROUND_TURN 1.4f    // ...swinging up to this far round him (radians)...
+#define SURROUND_BOOST 1.35f  // ...with a burst of speed
+#define BITE_RANGE 34.0f      // close enough to go straight in
 
 typedef struct MonsterInfo {
   float hp, speed, damage;
@@ -46,10 +50,10 @@ typedef struct MonsterInfo {
 } MonsterInfo;
 
 static const MonsterInfo INFO[MON_KINDS] = {
-    [MON_UNDERLING] = {3, 1.5f, 3, 1, 10},
-    [MON_LORD] = {8, 1.05f, 4, 3, 11},
-    [MON_BOSS] = {200, 1.2f, 12, 25, 24},
-    [MON_SKELETON] = {5, 1.0f, 4, 2, 10},
+    [MON_UNDERLING] = {3, 1.15f, 3, 1, 10},
+    [MON_LORD] = {8, 0.8f, 4, 3, 11},
+    [MON_BOSS] = {200, 0.95f, 12, 25, 24},
+    [MON_SKELETON] = {5, 0.8f, 4, 2, 10},
 };
 
 // ---------------------------------------------------------------- helpers
@@ -105,6 +109,12 @@ int combat_alive_monsters(const Combat *c) {
   return c->numMonsters;
 }
 
+void combat_next_wave(Combat *c) {
+  if (c->waveState == WAVE_CALM) {
+    c->waveTimer = 1;
+  }
+}
+
 // ---------------------------------------------------------------- setup
 
 void combat_init(Combat *c, Uint64 seed) {
@@ -141,8 +151,10 @@ static Monster *add_monster(Combat *c, MonsterKind kind, float x, float y) {
   Monster *m = &c->monsters[c->numMonsters++];
   // later waves are tougher
   float hp = INFO[kind].hp * (1 + WAVE_TOUGHNESS * (float)SDL_max(0, c->wave - 1));
+  // each one has its own side to come from: half go left, half right
+  float flank = (rndf(c) < 0.5f ? -1 : 1) * (0.35f + 0.65f * rndf(c));
   *m = (Monster){.kind = kind, .x = x, .y = y, .prevX = x, .prevY = y, .hp = hp, .maxHp = hp,
-                 .target = -2, .retarget = rnd(c, 15), .shootTimer = 60 + rnd(c, 60)};
+                 .target = -2, .retarget = rnd(c, 15), .shootTimer = 60 + rnd(c, 60), .flank = flank};
   return m;
 }
 
@@ -304,7 +316,7 @@ static void update_waves(Combat *c, const World *world, float heroX, float heroY
   if (c->toSpawn > 0 && --c->spawnTimer <= 0) {
     c->spawnTimer = (int)(0.4f * TICKS_PER_SECOND);
     int pack = SDL_min(c->toSpawn, 3 + rnd(c, 4));
-    float lords = SDL_min(MAX_LORDS, LORDS_PER_WAVE * (float)c->wave);
+    float lords = SDL_min(MAX_LORDS, LORDS_PER_WAVE * (float)(c->wave - 1));
     if (spawn_pack(c, world, pack, rndf(c) < lords ? MON_LORD : MON_UNDERLING)) {
       c->toSpawn -= pack;
     }
@@ -478,7 +490,17 @@ static void update_monster(Combat *c, const World *world, Npcs *npcs, int i, flo
 
   float dx = tx - m->x, dy = ty - m->y, d = SDL_sqrtf(dx * dx + dy * dy);
   bool direct = d < CHASE_DIRECT;
-  if (direct) {
+  bool flanker = m->kind == MON_UNDERLING || m->kind == MON_SKELETON;
+  if (direct && flanker && m->target == -1 && d < SURROUND_RANGE && d > BITE_RANGE) {
+    // spiral in round the hero towards its own side, so a group closes in
+    // from all around instead of queueing up in front of him
+    float bearing = SDL_atan2f(m->y - ty, m->x - tx) + m->flank * SURROUND_TURN * (d / SURROUND_RANGE);
+    float ring = SDL_max(BITE_RANGE - 8, d - 30);
+    float gx = tx + SDL_cosf(bearing) * ring, gy = ty + SDL_sinf(bearing) * ring;
+    if (!walk_towards(world, m, gx, gy, speed * SURROUND_BOOST)) {
+      direct = false;  // blocked: go around
+    }
+  } else if (direct) {
     // close enough to go straight at the prey
     float dir = 1;
     if (m->kind == MON_LORD && m->target == -1) {
@@ -699,9 +721,8 @@ int combat_update(Combat *c, const World *world, Npcs *npcs, float hx, float hy)
   Hero *h = &c->hero;
   bool heroInside = world_house_at(world, hx, hy) >= 0;
 
-  // healing, faster when resting in a house
   int regenEvery = REGEN_TICKS - 35 * h->levels[UP_VITALITY];
-  if (++h->regenTimer >= (heroInside ? regenEvery / 3 : regenEvery)) {
+  if (++h->regenTimer >= regenEvery) {
     h->regenTimer = 0;
     h->hp = SDL_min(h->maxHp, h->hp + 1);
   }

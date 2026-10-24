@@ -33,7 +33,7 @@
 #define SPLASH_HOLD_NS SDL_MS_TO_NS(1000)
 #define BANNER_NS SDL_MS_TO_NS(3500)
 
-#define PLAYER_SPEED 2.8f  // pixels per tick
+#define PLAYER_SPEED 2.2f  // pixels per tick
 #define CHARACTER_OFFSET_X 24.0f  // feet position inside the 48x48 sprite
 #define CHARACTER_OFFSET_Y 40.0f
 #define GREETING_DISTANCE 64.0f
@@ -114,13 +114,16 @@ typedef struct Game {
   const Sprite *sprite;
 
   Uint64 tick;
+  Uint64 worldTick;  // stands still while the hero is inside a house
+  bool frozen;
+  SDL_FRect nextWaveButton;  // empty when not shown
   Uint64 lastTime;
   Uint64 accumulator;
 
   int frames;
   int fps;
   Uint64 fpsTimer;
-  TextSlot fpsText, infoText, hpText, statusText, villagersText;
+  TextSlot fpsText, infoText, hpText, statusText, villagersText, buttonText;
   SDL_Texture *bannerText;
   Uint64 bannerShownAt;
   int currentVillage;
@@ -264,7 +267,7 @@ static void open_intro(Game *game) {
              "villagers: the ones the demons kill rise again as skeletons.\n\n"
              "Move with WASD or the arrow keys, your weapons strike on their own. Collect the souls "
              "of the fallen demons to grow stronger. Demons cannot enter houses: villagers hide "
-             "there, and you heal faster inside.\n\n"
+             "there, and time stands still while you are inside.\n\n"
              "Press Enter to begin.");
 }
 
@@ -368,6 +371,23 @@ static void play_death(Game *game, MIX_Audio *sound) {
   }
 }
 
+// Everything stops where it is: no interpolation towards the last step.
+static void freeze_motion(Game *game) {
+  for (int i = 0; i < game->npcs.count; i++) {
+    Npc *npc = &game->npcs.items[i];
+    npc->prevX = npc->x, npc->prevY = npc->y;
+    npc->moving = false;
+  }
+  Combat *c = &game->combat;
+  for (int i = 0; i < c->numMonsters; i++) {
+    c->monsters[i].prevX = c->monsters[i].x, c->monsters[i].prevY = c->monsters[i].y;
+    c->monsters[i].moving = false;
+  }
+  for (int i = 0; i < c->numShots; i++) {
+    c->shots[i].prevX = c->shots[i].x, c->shots[i].prevY = c->shots[i].y;
+  }
+}
+
 static void update(Game *game) {
   const bool *keys = SDL_GetKeyboardState(NULL);
   // scancodes are physical positions, so WASD also works on AZERTY keyboards
@@ -394,8 +414,18 @@ static void update(Game *game) {
   if (left) game->facing = DIR_LEFT;
   if (right) game->facing = DIR_RIGHT;
 
-  npcs_update(&game->npcs, game->world);
-  int events = combat_update(&game->combat, game->world, &game->npcs, game->x, game->y);
+  // time stands still while the hero is inside a house
+  bool frozen = world_house_at(game->world, game->x, game->y) >= 0;
+  if (frozen && !game->frozen) {
+    freeze_motion(game);
+  }
+  game->frozen = frozen;
+  int events = 0;
+  if (!frozen) {
+    npcs_update(&game->npcs, game->world);
+    events = combat_update(&game->combat, game->world, &game->npcs, game->x, game->y);
+    game->worldTick++;
+  }
 
   const Hero *hero = &game->combat.hero;
   const CharacterSheet *sheet = &game->atlas.player;
@@ -558,7 +588,7 @@ static void render_smoke(Game *game, float camX, float camY) {
 static void render_souls(Game *game, float camX, float camY) {
   SDL_Renderer *renderer = game->engine.renderer;
   const Combat *c = &game->combat;
-  float time = (float)(game->tick % 1000);
+  float time = (float)(game->worldTick % 1000);
   for (int i = 0; i < c->numSouls; i++) {
     const Soul *s = &c->souls[i];
     float x = s->x - camX, y = s->y - camY + SDL_sinf(time * 0.15f + (float)i) * 2;
@@ -592,11 +622,11 @@ static void render_aura(Game *game, float px, float py, float camX, float camY) 
   }
   SDL_Renderer *renderer = game->engine.renderer;
   float r = combat_aura_radius(&game->combat);
-  float pulse = 0.5f + 0.5f * SDL_sinf((float)(game->tick % 1000) * 0.12f);
+  float pulse = 0.5f + 0.5f * SDL_sinf((float)(game->worldTick % 1000) * 0.12f);
   Uint8 alpha = (Uint8)(70 + 60 * pulse);
   int points = 40;
   for (int k = 0; k < points; k++) {
-    float a = (float)k * 2 * SDL_PI_F / (float)points + (float)(game->tick % 10000) * 0.01f;
+    float a = (float)k * 2 * SDL_PI_F / (float)points + (float)(game->worldTick % 10000) * 0.01f;
     fill(renderer, px - camX + SDL_cosf(a) * r - 2, py - camY + SDL_sinf(a) * r * 0.6f - 2, 4, 4,
          (SDL_Color){255, 236, 150, alpha});
   }
@@ -613,7 +643,7 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
       fill(renderer, x - 4, y - 4, 8, 8, (SDL_Color){47, 47, 47, 255});
       fill(renderer, x - 2, y - 2, 4, 4, (SDL_Color){156, 156, 146, 255});
     } else {
-      bool pulse = (game->tick / 4 + (Uint64)i) % 2;
+      bool pulse = (game->worldTick / 4 + (Uint64)i) % 2;
       SDL_Color outline = s->boss ? (SDL_Color){110, 16, 16, 255} : (SDL_Color){30, 90, 20, 255};
       SDL_Color body = s->boss ? (SDL_Color){240, 70, 40, 255} : (SDL_Color){130, 230, 60, 255};
       fill(renderer, x - 5, y - 5, 10, 10, outline);
@@ -627,7 +657,7 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
     float a = c->hero.flameAngle + (float)k * 2 * SDL_PI_F / (float)flames;
     float x = px - camX + SDL_cosf(a) * combat_flame_radius();
     float y = py - 14 - camY + SDL_sinf(a) * combat_flame_radius() * 0.8f;
-    bool flicker = (game->tick / 3 + (Uint64)k) % 2;
+    bool flicker = (game->worldTick / 3 + (Uint64)k) % 2;
     fill(renderer, x - 6, y - 8, 12, 14, (SDL_Color){110, 30, 10, 255});
     fill(renderer, x - 4, y - 6 - (flicker ? 2 : 0), 8, 10 + (flicker ? 2 : 0), (SDL_Color){247, 130, 40, 255});
     fill(renderer, x - 2, y - 2, 4, 6, (SDL_Color){255, 230, 110, 255});
@@ -745,7 +775,7 @@ static void render_world(Game *game, float camX, float camY, float t) {
     }
     bool flip;
     SDL_FPoint offset;
-    const Sprite *sprite = npc_sprite(npc, &game->atlas, game->tick, &flip, &offset);
+    const Sprite *sprite = npc_sprite(npc, &game->atlas, game->worldTick, &flip, &offset);
     push_drawable(game, &count, (Drawable){
         .key = y, .sprite = sprite, .flip = flip,
         .x = SDL_roundf(x + offset.x - camX), .y = SDL_roundf(y + offset.y - camY),
@@ -761,7 +791,7 @@ static void render_world(Game *game, float camX, float camY, float t) {
     }
     const Sprite *sprite = &game->atlas.monsters[m->kind];
     float scale = m->kind == MON_BOSS ? 2 : 1;
-    float bob = m->moving && (game->tick / 8 + (Uint64)i) % 2 ? -2 : 0;
+    float bob = m->moving && (game->worldTick / 8 + (Uint64)i) % 2 ? -2 : 0;
     push_drawable(game, &count, (Drawable){
         .key = y, .sprite = sprite, .flip = m->faceLeft, .scale = scale,
         .x = SDL_roundf(x - sprite->source.w * scale / 2 - camX),
@@ -919,12 +949,23 @@ static void render_hud(Game *game, Uint64 now) {
   draw_text(game, &game->hpText, game->smallFont, 184, 14, "%d of %d   Level %d", hero->hp, hero->maxHp,
             hero->level + 1);
 
-  if (c->waveState == WAVE_ATTACK) {
+  game->nextWaveButton = (SDL_FRect){0};
+  if (game->frozen) {
+    draw_text(game, &game->statusText, game->smallFont, 12, 38, "Time stands still");
+  } else if (c->waveState == WAVE_ATTACK) {
     draw_text(game, &game->statusText, game->smallFont, 12, 38, "Wave %d: %d demon%s", c->wave,
               c->numMonsters + c->toSpawn, c->numMonsters + c->toSpawn == 1 ? "" : "s");
   } else {
     draw_text(game, &game->statusText, game->smallFont, 12, 38, "Next wave in %d s",
               (c->waveTimer + 49) / 50);
+  }
+  if (c->waveState == WAVE_CALM && game->scene == SCENE_PLAYING) {
+    // the button to call the next wave right away (or press Enter)
+    SDL_FRect b = {12, 82, 150, 26};
+    fill(renderer, b.x, b.y, b.w, b.h, (SDL_Color){58, 41, 41, 255});
+    fill(renderer, b.x + 2, b.y + 2, b.w - 4, b.h - 4, (SDL_Color){246, 239, 158, 255});
+    draw_text(game, &game->buttonText, game->smallFont, b.x + 12, b.y + 3, "Next wave");
+    game->nextWaveButton = b;
   }
   int alive = 0, villagers = 0;
   for (int i = 0; i < game->npcs.count; i++) {
@@ -1147,6 +1188,15 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     engine_fit_view(&game->engine);
     return SDL_APP_CONTINUE;
   }
+  if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN && game->scene == SCENE_PLAYING) {
+    // the button is in logical coordinates, like everything drawn
+    SDL_ConvertEventToRenderCoordinates(game->engine.renderer, event);
+    SDL_FPoint p = {event->button.x, event->button.y};
+    if (SDL_PointInRectFloat(&p, &game->nextWaveButton)) {
+      combat_next_wave(&game->combat);
+    }
+    return SDL_APP_CONTINUE;
+  }
   if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
       (event->key.scancode == SDL_SCANCODE_F || event->key.scancode == SDL_SCANCODE_F11)) {
     engine_toggle_fullscreen(&game->engine);
@@ -1203,6 +1253,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   }
 
   switch (key) {
+    case SDL_SCANCODE_RETURN:
+    case SDL_SCANCODE_KP_ENTER:
+      combat_next_wave(&game->combat);
+      break;
     case SDL_SCANCODE_C:
       engine_set_vsync(&game->engine, !game->engine.vsync);
       break;
@@ -1274,7 +1328,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
       MIX_DestroyTrack(game->deathTracks[i]);
     }
   }
-  TextSlot *slots[] = {&game->fpsText, &game->infoText, &game->hpText, &game->statusText, &game->villagersText};
+  TextSlot *slots[] = {&game->fpsText, &game->infoText, &game->hpText, &game->statusText, &game->villagersText,
+                       &game->buttonText};
   for (int i = 0; i < (int)SDL_arraysize(slots); i++) {
     SDL_DestroyTexture(slots[i]->texture);
   }

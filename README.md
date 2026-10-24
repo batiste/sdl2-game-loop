@@ -17,8 +17,9 @@ waves, protect the villagers and slay the evil lord.
   level offers three upgrades to choose from (keys 1 to 3): sword, throwing
   stones, spirit flames, holy ground, swift boots, vitality, might, haste
   and soul magnet. Some demons drop hearts.
-- Demons cannot enter houses. Villagers hide there, and you heal faster
-  inside.
+- Demons cannot enter houses. Villagers hide there, and time stands still
+  while you are inside.
+- Between waves, click Next wave (or press Enter) to call the next one.
 
 ## Features
 
@@ -56,7 +57,7 @@ waves, protect the villagers and slay the evil lord.
 | ------------------- | ------------------------------- |
 | W A S D / arrows    | Move (physical keys, so it works on AZERTY too) |
 | 1, 2, 3             | Choose an upgrade               |
-| Enter               | Start, continue                 |
+| Enter               | Start, continue, next wave      |
 | R                   | Generate a new world            |
 | M                   | Toggle the minimap              |
 | N                   | Pause / resume the music        |
