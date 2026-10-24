@@ -22,6 +22,7 @@ typedef struct HousePlan {
   int doorCol;  // relative to the house
   bool small;
   bool roof;
+  int shape;  // 0 hipped (tiles.png), 1 gabled, 2 thatched (roofs.png)
   int style;
 
   // walls, in pixels relative to the house: outer bounds, thickness of
@@ -352,9 +353,88 @@ static void add_walls(World *world, const HousePlan *p, int hx, int hy) {
   }
 }
 
+static Box furniture_box(Furniture f) {
+  switch (f) {
+    case FURN_SHELF:
+    case FURN_CUPBOARD: return (Box){8, 0, 40, 36};
+    case FURN_BED_RED:
+    case FURN_BED_BLUE:
+    case FURN_BED_GREEN: return (Box){12, 4, 36, 44};
+    case FURN_TABLE: return (Box){10, 14, 38, 34};
+    case FURN_CHAIR_LEFT:
+    case FURN_CHAIR_RIGHT: return (Box){18, 22, 30, 38};
+    case FURN_CHEST: return (Box){10, 18, 38, 38};
+    case FURN_BARREL: return (Box){14, 12, 34, 38};
+    case FURN_PLANT: return (Box){18, 24, 30, 38};
+    case FURN_FIRE: return (Box){4, 0, 44, 36};
+    default: return (Box){0};  // the rug is walked over
+  }
+}
+
+static void put_furniture(World *world, int x, int y, Furniture f) {
+  world->furniture[y * world->width + x] = (Uint16)GID_FURNITURE(f);
+  add_box(world, x, y, furniture_box(f));
+}
+
+// Furniture against the back and side walls, a table with chairs and a rug
+// by the door. The door column stays clear so the room can be reached.
+static void furnish(Gen *g, const HousePlan *p, int hx, int hy, int fireCol) {
+  static const Furniture BACK[] = {FURN_SHELF, FURN_CUPBOARD, FURN_BED_RED, FURN_BED_BLUE,
+                                   FURN_BED_GREEN, FURN_BARREL, FURN_PLANT, FURN_CHEST};
+  static const Furniture SIDE[] = {FURN_CHEST, FURN_BARREL, FURN_PLANT, FURN_BED_RED,
+                                   FURN_BED_BLUE, FURN_BED_GREEN};
+  World *world = g->world;
+  if (p->small) {
+    put_furniture(world, hx + 1, hy, fireCol >= 0 ? FURN_FIRE : BACK[rnd(g, 5)]);
+    return;
+  }
+
+  bool used[6][4] = {{false}};
+  for (int c = 0; c < p->w; c++) {
+    if (c == fireCol || rndf(g) < 0.55f) {
+      put_furniture(world, hx + c, hy, c == fireCol ? FURN_FIRE : BACK[rnd(g, (int)SDL_arraysize(BACK))]);
+      used[c][0] = true;
+    }
+  }
+  for (int r = 1; r < p->h - 1; r++) {
+    for (int c = 0; c < p->w; c += p->w - 1) {
+      if (rndf(g) < 0.45f) {
+        put_furniture(world, hx + c, hy + r, SIDE[rnd(g, (int)SDL_arraysize(SIDE))]);
+        used[c][r] = true;
+      }
+    }
+  }
+
+  int tableRow = p->h == 4 ? 1 + rnd(g, 2) : 1;
+  int candidates[6], count = 0;
+  for (int c = 1; c < p->w - 1; c++) {
+    if (c != p->doorCol && !used[c][tableRow]) {
+      candidates[count++] = c;
+    }
+  }
+  if (p->w >= 4 && count > 0) {
+    int c = candidates[rnd(g, count)];
+    put_furniture(world, hx + c, hy + tableRow, FURN_TABLE);
+    used[c][tableRow] = true;
+    for (int side = -1; side <= 1; side += 2) {
+      int cc = c + side;
+      if (cc >= 0 && cc < p->w && cc != p->doorCol && !used[cc][tableRow]) {
+        put_furniture(world, hx + cc, hy + tableRow, side < 0 ? FURN_CHAIR_LEFT : FURN_CHAIR_RIGHT);
+        used[cc][tableRow] = true;
+      }
+    }
+  }
+  if (p->h > 2 && rndf(g) < 0.7f) {
+    put_furniture(world, hx + p->doorCol, hy + p->h - 2, FURN_RUG);
+  }
+}
+
 static HousePlan plan_house(Gen *g, const Village *v) {
   HousePlan p = {.style = v->styles[rnd(g, (int)SDL_arraysize(v->styles))], .roof = rndf(g) > 0.08f};
+  // most houses of a village share its roof shape
+  p.shape = rndf(g) < 0.6f ? v->roofShape : rnd(g, 3);
   if (rndf(g) < 0.3f) {
+    p.shape = 0;  // only the hipped roof exists for cottages
     // cottage, measured from the small house art
     p.small = true;
     p.w = 3, p.h = 3, p.doorCol = 1;
@@ -378,8 +458,15 @@ static int large_piece(const HousePlan *p, int c, int r, bool room, bool window)
   int last = p->w - 1, bottom = p->h - 1;
   int col = c == 0 ? 0 : (c == last ? 3 : 2);
   bool door = r == bottom && c == p->doorCol;
-  if (!room) {
+  if (!room && p->shape == 0) {
     return PIECE_ROOF(door ? 1 : col, r == 0 ? 0 : (r == bottom ? 2 : 1));
+  }
+  if (!room) {
+    // the ridge runs along the middle: inside row 1 for 3 deep houses,
+    // between rows 1 and 2 for 4 deep ones
+    static const int ROWS3[] = {0, 1, 4}, ROWS4[] = {0, 2, 3, 4};
+    int row = p->h == 3 ? ROWS3[r] : ROWS4[r];
+    return PIECE_SHAPED(p->shape - 1, door ? 1 : col, row);
   }
   // inside: window notches in the back wall, side windows every other row
   int row = r == 0 ? 0 : (r == bottom ? 3 : (r % 2 ? 1 : 2));
@@ -444,10 +531,13 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
       .village = villageIndex, .roof = p.roof, .style = p.style,
       .body = {ox + (float)p.bodyX, oy + (float)p.bodyY, (float)p.bodyW, (float)p.bodyH},
   };
+  // a fireplace against the back wall, with the chimney right above it
+  int fireCol = -1;
   if (p.roof && rndf(g) < 0.6f) {
-    // chimney somewhere along the ridge
+    fireCol = p.small ? 1 : rnd(g, p.w);
     house->chimney = true;
-    house->chimneyX = house->body.x + 4 + rndf(g) * (house->body.w - 56);
+    float x = ox + (float)(fireCol * TILE_SIZE) - 1 + (float)(rnd(g, 9) - 4);
+    house->chimneyX = SDL_clamp(x, house->body.x - 14, house->body.x + house->body.w - 34);
     house->chimneyY = oy - 6;
   }
 
@@ -470,6 +560,7 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
     }
   }
   add_walls(world, &p, hx, hy);
+  furnish(g, &p, hx, hy, fireCol);
   return true;
 }
 
@@ -504,10 +595,11 @@ static void make_villages(Gen *g) {
     Village *v = &world->villages[index];
     *v = (Village){.centerX = cx, .centerY = cy, .radius = 12, .firstHouse = world->numHouses};
     name_village(g, v);
-    // each village has its own few house styles
+    // each village has its own few house styles and a favourite roof shape
     for (int k = 0; k < (int)SDL_arraysize(v->styles); k++) {
       v->styles[k] = rnd(g, NUM_HOUSE_STYLES);
     }
+    v->roofShape = rnd(g, 3);
 
     // plaza
     int pw = 4 + rnd(g, 3), ph = 4;
@@ -807,7 +899,7 @@ World *world_generate(Uint64 seed, int width, int height) {
     *world = (World){
         .seed = seed, .width = width, .height = height,
         .ground = SDL_calloc(cells, sizeof(Uint16)), .top = SDL_calloc(cells, sizeof(Uint16)),
-        .interior = SDL_calloc(cells, sizeof(Uint16)),
+        .interior = SDL_calloc(cells, sizeof(Uint16)), .furniture = SDL_calloc(cells, sizeof(Uint16)),
         .solid = SDL_calloc(cells * BOXES_PER_CELL, sizeof(Box)), .kind = SDL_calloc(cells, 1),
         .houseAt = SDL_malloc(cells * sizeof(Sint16)),
     };
@@ -815,7 +907,7 @@ World *world_generate(Uint64 seed, int width, int height) {
       world->houseAt[i] = -1;
     }
   }
-  bool ok = world && world->ground && world->top && world->interior && world->solid &&
+  bool ok = world && world->ground && world->top && world->interior && world->furniture && world->solid &&
             world->kind && world->houseAt &&
             g.water && g.nearWater && g.path && g.reserved && g.route;
 

@@ -15,6 +15,7 @@ void world_free(World *world) {
   SDL_free(world->ground);
   SDL_free(world->top);
   SDL_free(world->interior);
+  SDL_free(world->furniture);
   SDL_free(world->solid);
   SDL_free(world->kind);
   SDL_free(world->houseAt);

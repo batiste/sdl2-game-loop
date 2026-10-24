@@ -19,10 +19,12 @@ roads, and villagers going about their day.
   out, walk the roads to the plaza, visit neighbours, sometimes travel to
   another village, and go back inside. Pigs potter around the villages.
 - **Varied houses**: cottages and houses from 3 to 6 tiles wide, assembled
-  from the corner, edge and middle pieces of the original art, in 12 styles
-  (red tile, slate, moss, thatch, charcoal and terracotta roofs; beige,
-  plaster, stone or timber walls; brick, wood or stone floors) recoloured at
-  load time. Each village has its own few styles. Chimneys puff smoke.
+  from corner, edge and middle pieces, with hipped, gabled or thatched roofs.
+  12 colour styles (roof, walls, floor) stay close to the original palette;
+  each village has its own styles and a favourite roof shape.
+- **Furnished interiors**: shelves, cupboards and beds against the back wall,
+  chests and barrels along the sides, a table with chairs, a rug by the door,
+  and a fireplace under the chimney, whose smoke rises from the roof.
 - **Enterable houses**: walls have real collision with a door opening; step
   inside and the roof fades away to show the room and whoever is home.
   Villagers walk in and out through the door too.
@@ -86,9 +88,11 @@ Assets are copied next to the executable at build time and located with
 | `assets/nature.png` | water, path, bushes, rocks, flowers, fences...     |
 | `assets/character.png` | player sprite sheet; villagers are recoloured copies |
 
-`assets/nature.png` is generated in the style of the original art by
-`tools/gen_nature_tiles.py`; edit the script and re-run it with Pillow
-installed (`pip install pillow`) to tweak or add tiles. Tile ids for all
+`assets/nature.png`, `assets/roofs.png` (gabled and thatched roofs) and
+`assets/furniture.png` are generated in the style of the original art by
+`tools/gen_nature_tiles.py` and `tools/gen_house_tiles.py`; edit the scripts
+and re-run them with Pillow installed (`pip install pillow`) to tweak or add
+tiles. Tile ids for all
 tilesets are defined in `src/tiles.h`.
 
 ## Layout

@@ -45,6 +45,7 @@ typedef struct Village {
   int firstHouse;
   int numHouses;
   int styles[3];         // house styles used in this village
+  int roofShape;         // the roof shape most houses have
 } Village;
 
 typedef struct World {
@@ -55,6 +56,7 @@ typedef struct World {
   Uint16 *ground;
   Uint16 *top;
   Uint16 *interior;  // what is under the roof, drawn when the player is inside
+  Uint16 *furniture; // inside houses, shown with the interior
   Box *solid;        // BOXES_PER_CELL per cell
   Uint8 *kind;       // CellKind, for the minimap and path costs
   Sint16 *houseAt;   // house index per cell, -1 outside houses

@@ -262,6 +262,20 @@ static bool is_flat(Uint16 gid) {
          gid == GID_DECO(DECO_LILY_FLOWER) || GID_IS_FLAT_HOUSE(gid);
 }
 
+// Furniture is seen through a faded roof or in houses without one.
+static Uint16 visible_furniture(const Game *game, int i) {
+  const World *world = game->world;
+  Uint16 gid = world->furniture[i];
+  int h = world->houseAt[i];
+  if (!gid || h < 0 || (world->houses[h].roof && h != game->roofHouse)) {
+    return 0;
+  }
+  if (gid == GID_FURNITURE(FURN_FIRE)) {
+    gid = (Uint16)(gid + SDL_GetTicksNS() / SDL_MS_TO_NS(140) % 3);
+  }
+  return gid;
+}
+
 static bool in_house(const House *house, int col, int row) {
   return col >= house->x && row >= house->y && col < house->x + house->w && row < house->y + house->h;
 }
@@ -365,6 +379,10 @@ static void render_world(Game *game, float camX, float camY, float t) {
         if (gid) {
           sprite_draw(renderer, &tiles[gid], (float)(col * TILE_SIZE) - camX, (float)(row * TILE_SIZE) - camY);
         }
+        if (pass == 1 && world->furniture[i] == GID_FURNITURE(FURN_RUG) && visible_furniture(game, i)) {
+          sprite_draw(renderer, &tiles[world->furniture[i]], (float)(col * TILE_SIZE) - camX,
+                      (float)(row * TILE_SIZE) - camY);
+        }
       }
     }
   }
@@ -373,6 +391,13 @@ static void render_world(Game *game, float camX, float camY, float t) {
   int count = 0;
   for (int row = row0; row <= row1; row++) {
     for (int col = col0; col <= col1; col++) {
+      Uint16 furniture = visible_furniture(game, row * world->width + col);
+      if (furniture && furniture != GID_FURNITURE(FURN_RUG)) {
+        push_drawable(game, &count, (Drawable){
+            .key = (float)(row * TILE_SIZE) + 36, .sprite = &tiles[furniture],
+            .x = (float)(col * TILE_SIZE) - camX, .y = (float)(row * TILE_SIZE) - camY,
+        });
+      }
       Uint16 gid = world->top[row * world->width + col];
       if (!gid || is_flat(gid) || (open && in_house(open, col, row))) {
         continue;

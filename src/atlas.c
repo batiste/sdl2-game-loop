@@ -61,26 +61,28 @@ typedef struct Tint {
   float val;  // brightness multiplier
 } Tint;
 
+// kept close to the original palette so villages stay harmonious
 #define KEEP {-1, 1, 1}
-static const Tint ROOF_RED = KEEP, ROOF_SLATE = {212, 0.55f, 0.9f}, ROOF_MOSS = {155, 0.5f, 0.68f},
-                  ROOF_THATCH = {45, 0.68f, 1.06f}, ROOF_CHARCOAL = {-1, 0.12f, 0.75f},
-                  ROOF_TERRACOTTA = {25, 0.8f, 0.75f};
-static const Tint WALL_BEIGE = KEEP, WALL_PLASTER = {-1, 0.25f, 1.08f}, WALL_STONE = {40, 0.12f, 0.85f},
-                  WALL_TIMBER = {28, 0.6f, 0.75f};
+static const Tint ROOF_RED = KEEP, ROOF_RUST = {14, 0.85f, 0.8f}, ROOF_TERRACOTTA = {24, 0.75f, 0.88f},
+                  ROOF_UMBER = {28, 0.5f, 0.62f}, ROOF_SLATE = {215, 0.22f, 0.72f},
+                  ROOF_CHARCOAL = {-1, 0.12f, 0.68f}, ROOF_MOSS = {85, 0.3f, 0.62f};
+static const Tint WALL_BEIGE = KEEP, WALL_PLASTER = {48, 0.35f, 1.05f}, WALL_STONE = {45, 0.18f, 0.85f},
+                  WALL_TIMBER = {32, 0.55f, 0.8f};
 static const Tint FLOOR_BRICK = KEEP, FLOOR_WOOD = {30, 0.6f, 0.8f}, FLOOR_STONE = {-1, 0.15f, 0.85f};
+static const Tint STRAW = {44, 0.62f, 1.0f}, OLD_STRAW = {38, 0.42f, 0.82f};
 #undef KEEP
 
 typedef struct HouseStyle {
-  Tint roof, wall, floor;
+  Tint roof, wall, floor, thatch;
 } HouseStyle;
 
 static const HouseStyle STYLES[NUM_HOUSE_STYLES] = {
-    {ROOF_RED, WALL_BEIGE, FLOOR_BRICK},        {ROOF_RED, WALL_PLASTER, FLOOR_WOOD},
-    {ROOF_SLATE, WALL_PLASTER, FLOOR_STONE},    {ROOF_SLATE, WALL_STONE, FLOOR_STONE},
-    {ROOF_MOSS, WALL_BEIGE, FLOOR_WOOD},        {ROOF_MOSS, WALL_TIMBER, FLOOR_WOOD},
-    {ROOF_THATCH, WALL_TIMBER, FLOOR_WOOD},     {ROOF_THATCH, WALL_BEIGE, FLOOR_BRICK},
-    {ROOF_CHARCOAL, WALL_STONE, FLOOR_STONE},   {ROOF_CHARCOAL, WALL_PLASTER, FLOOR_BRICK},
-    {ROOF_TERRACOTTA, WALL_BEIGE, FLOOR_BRICK}, {ROOF_TERRACOTTA, WALL_TIMBER, FLOOR_WOOD},
+    {ROOF_RED, WALL_BEIGE, FLOOR_BRICK, STRAW},         {ROOF_RED, WALL_PLASTER, FLOOR_WOOD, STRAW},
+    {ROOF_TERRACOTTA, WALL_BEIGE, FLOOR_BRICK, STRAW},  {ROOF_TERRACOTTA, WALL_TIMBER, FLOOR_WOOD, OLD_STRAW},
+    {ROOF_RUST, WALL_PLASTER, FLOOR_WOOD, STRAW},       {ROOF_RUST, WALL_STONE, FLOOR_STONE, OLD_STRAW},
+    {ROOF_SLATE, WALL_PLASTER, FLOOR_STONE, OLD_STRAW}, {ROOF_SLATE, WALL_STONE, FLOOR_STONE, OLD_STRAW},
+    {ROOF_CHARCOAL, WALL_STONE, FLOOR_STONE, OLD_STRAW}, {ROOF_CHARCOAL, WALL_PLASTER, FLOOR_BRICK, STRAW},
+    {ROOF_UMBER, WALL_TIMBER, FLOOR_WOOD, OLD_STRAW},   {ROOF_MOSS, WALL_BEIGE, FLOOR_WOOD, STRAW},
 };
 
 static void rgb_to_hsv(const Uint8 *p, float *h, float *s, float *v) {
@@ -134,24 +136,31 @@ static void tint_tile(SDL_Surface *dst, int dx, int dy, const SDL_Surface *src, 
 
 static bool build_houses(Atlas *atlas, Engine *engine) {
   SDL_Surface *src = engine_load_surface("tiles.png");
+  SDL_Surface *shaped = engine_load_surface("roofs.png");
   SDL_Surface *sheet = SDL_CreateSurface(HOUSE_PIECES * TILE_SIZE, NUM_HOUSE_STYLES * TILE_SIZE,
                                          SDL_PIXELFORMAT_RGBA32);
-  bool ok = src && sheet;
+  bool ok = src && shaped && sheet;
   if (ok) {
     clear_grass(src);
     for (int style = 0; style < NUM_HOUSE_STYLES; style++) {
       const HouseStyle *st = &STYLES[style];
       int y = style * TILE_SIZE;
       for (int piece = 0; piece < HOUSE_PIECES; piece++) {
-        // where each piece comes from in tiles.png
+        // where each piece comes from in tiles.png or roofs.png
         int col, row;
-        bool roof = piece < PIECE_ROOM(0, 0);
-        if (piece < PIECE_SMALL_ROOF(0, 0)) col = 1 + piece % 4, row = 7 + piece / 4;
-        else if (piece < PIECE_ROOM(0, 0)) col = 13 + (piece - 12) % 3, row = 1 + (piece - 12) / 3;
+        const SDL_Surface *from = src;
+        Tint other = st->floor;
+        if (piece < PIECE_SMALL_ROOF(0, 0)) col = 1 + piece % 4, row = 7 + piece / 4, other = st->roof;
+        else if (piece < PIECE_ROOM(0, 0)) col = 13 + (piece - 12) % 3, row = 1 + (piece - 12) / 3, other = st->roof;
         else if (piece < PIECE_SMALL_ROOM(0, 0)) col = 1 + (piece - 21) % 4, row = 1 + (piece - 21) / 4;
-        else col = 10 + (piece - 37) % 3, row = 1 + (piece - 37) / 3;
-        tint_tile(sheet, piece * TILE_SIZE, y, src, col * TILE_SIZE, row * TILE_SIZE,
-                  st->wall, roof ? st->roof : st->floor);
+        else if (piece < PIECE_SHAPED(0, 0, 0)) col = 10 + (piece - 37) % 3, row = 1 + (piece - 37) / 3;
+        else {
+          int k = piece - PIECE_SHAPED(0, 0, 0), shape = k / 20;
+          col = shape * 4 + k % 4, row = (k % 20) / 4;
+          from = shaped;
+          other = shape == 1 ? st->thatch : st->roof;
+        }
+        tint_tile(sheet, piece * TILE_SIZE, y, from, col * TILE_SIZE, row * TILE_SIZE, st->wall, other);
       }
       Uint8 red[4] = {219, 78, 29, 255};
       apply_tint(red, st->roof);
@@ -169,6 +178,7 @@ static bool build_houses(Atlas *atlas, Engine *engine) {
     }
   }
   SDL_DestroySurface(sheet);
+  SDL_DestroySurface(shaped);
   SDL_DestroySurface(src);
   return ok;
 }
@@ -273,6 +283,7 @@ bool atlas_load(Atlas *atlas, Engine *engine) {
          add_tileset(atlas, engine, "tiles.png", GID_TILES(0, 0), true) &&
          add_tileset(atlas, engine, "nature.png", GID_NATURE(0, 0), false) &&
          build_houses(atlas, engine) &&
+         add_tileset(atlas, engine, "furniture.png", GID_FURNITURE(0), false) &&
          load_characters(atlas, engine) &&
          load_pig(atlas, engine);
 }
