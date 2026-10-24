@@ -99,7 +99,7 @@ typedef struct Soul {
 typedef struct Debris {
   MonsterKind kind;
   bool right;
-  float x, y, vx;
+  float x, y, vx, vy;  // the halves fly off with the blow that killed it
   int life;
 } Debris;
 

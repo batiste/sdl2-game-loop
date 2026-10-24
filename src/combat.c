@@ -54,10 +54,10 @@ typedef struct MonsterInfo {
 } MonsterInfo;
 
 static const MonsterInfo INFO[MON_KINDS] = {
-    [MON_UNDERLING] = {3, 1.15f, 3, 1, 10},
-    [MON_LORD] = {8, 0.8f, 4, 3, 11},
-    [MON_BOSS] = {200, 0.95f, 12, 25, 24},
-    [MON_SKELETON] = {5, 0.8f, 4, 2, 10},
+    [MON_UNDERLING] = {3, 1.04f, 3, 1, 10},
+    [MON_LORD] = {8, 0.72f, 4, 3, 11},
+    [MON_BOSS] = {200, 0.86f, 12, 25, 24},
+    [MON_SKELETON] = {5, 0.72f, 4, 2, 10},
 };
 
 // ---------------------------------------------------------------- helpers
@@ -177,7 +177,9 @@ static void add_soul(Combat *c, float x, float y, int value) {
 static void kill_monster(Combat *c, int i) {
   Monster *m = &c->monsters[i];
   for (int side = 0; side < 2 && c->numDebris < MAX_DEBRIS; side++) {
-    c->debris[c->numDebris++] = (Debris){m->kind, side == 1, m->x, m->y, side ? 1.2f : -1.2f, 30};
+    // apart from each other, and carried by the knockback of the killing blow
+    float split = side ? 1.2f : -1.2f;
+    c->debris[c->numDebris++] = (Debris){m->kind, side == 1, m->x, m->y, split + m->kickX * 0.8f, m->kickY * 0.8f, 30};
   }
   int xp = INFO[m->kind].xp;
   if (m->kind == MON_BOSS) {
@@ -785,7 +787,15 @@ int combat_update(Combat *c, const World *world, Npcs *npcs, float hx, float hy)
 
   for (int i = c->numDebris - 1; i >= 0; i--) {
     Debris *d = &c->debris[i];
-    d->x += d->vx;
+    // slide to a stop, not through walls
+    if (!world_blocked(world, d->x + d->vx - 4, d->y - 2, d->x + d->vx + 4, d->y)) {
+      d->x += d->vx;
+    }
+    if (!world_blocked(world, d->x - 4, d->y + d->vy - 2, d->x + 4, d->y + d->vy)) {
+      d->y += d->vy;
+    }
+    d->vx *= 0.88f;
+    d->vy *= 0.88f;
     if (--d->life <= 0) {
       c->debris[i] = c->debris[--c->numDebris];
     }
