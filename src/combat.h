@@ -103,6 +103,7 @@ typedef struct Debris {
 
 typedef struct Slash {
   float x, y, angle, range;
+  float arc;  // half of the swing, in radians
   int life;
 } Slash;
 

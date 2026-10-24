@@ -28,6 +28,10 @@
 #define WAVE_TOUGHNESS 0.2f     // extra health per wave
 #define LORDS_PER_WAVE 0.1f     // share of lords grows with each wave...
 #define MAX_LORDS 0.4f          // ...up to this
+#define SWORD_RANGE 44          // reach at level 1, in pixels...
+#define SWORD_RANGE_LEVEL 6     // ...and per level above
+#define SWORD_ARC 0.6f          // half of the swing at level 1, in radians...
+#define SWORD_ARC_LEVEL 0.1f    // ...and per level above
 #define REGEN_TICKS 300         // one health point every so many ticks
 #define HEART_CHANCE 0.02f
 #define HEART_HEAL 10
@@ -533,7 +537,8 @@ static void use_sword(Combat *c, float hx, float hy) {
   if (--h->swordTimer > 0 || level == 0) {
     return;
   }
-  float range = 52 + 8 * (float)level;
+  float range = SWORD_RANGE + SWORD_RANGE_LEVEL * (float)(level - 1);
+  float arc = SWORD_ARC + SWORD_ARC_LEVEL * (float)(level - 1);
   int target = nearest_monster(c, hx, hy - 12, range + 16, -1);
   if (target < 0) {
     return;  // no swinging at nothing
@@ -546,13 +551,13 @@ static void use_sword(Combat *c, float hx, float hy) {
   for (int k = 0; k < directions; k++) {
     float a = angle + (float)k * SDL_PI_F;
     if (c->numSlashes < MAX_SLASHES) {
-      c->slashes[c->numSlashes++] = (Slash){hx, hy - 14, a, range, 10};
+      c->slashes[c->numSlashes++] = (Slash){hx, hy - 14, a, range, arc, 10};
     }
     for (int i = c->numMonsters - 1; i >= 0; i--) {
       Monster *m = &c->monsters[i];
       float dx = m->x - hx, dy = m->y - 12 - (hy - 12), d = SDL_sqrtf(dx * dx + dy * dy);
       float diff = SDL_fabsf(SDL_fmodf(SDL_atan2f(dy, dx) - a + 3 * SDL_PI_F, 2 * SDL_PI_F) - SDL_PI_F);
-      if (d < range + INFO[m->kind].radius && diff < 1.25f) {
+      if (d < range + INFO[m->kind].radius && diff < arc) {
         hit_monster(c, i, damage, hx, hy, 6);
       }
     }

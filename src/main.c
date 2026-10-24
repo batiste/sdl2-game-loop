@@ -638,7 +638,7 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
     const Slash *s = &c->slashes[i];
     Uint8 alpha = (Uint8)(255 * s->life / 10);
     for (int k = -5; k <= 5; k++) {
-      float a = s->angle + (float)k * 0.22f;
+      float a = s->angle + (float)k * s->arc / 5;
       float r = s->range * (0.75f + 0.1f * (1 - SDL_fabsf((float)k) / 5));
       float size = k == 0 ? 6 : 4;
       fill(renderer, s->x - camX + SDL_cosf(a) * r - size / 2, s->y - camY + SDL_sinf(a) * r - size / 2, size, size,
