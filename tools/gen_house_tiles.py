@@ -14,6 +14,8 @@ band and door) is copied from the hipped roof of tiles.png.
   row 5:   facade with a window for the gable (col 0) and the thatch (col 4),
            and the door copied from the cottage for the hipped roof (col 1)
            and for the interior (col 2)
+  row 6:   glazed windows: hipped facade (col 0), interior back, left,
+           right and front walls (cols 1-4). In tiles.png they are openings.
 
 A house 3 rows deep uses rows 0, 1, 4; 4 rows deep uses rows 0, 2, 3, 4.
 The large house in tiles.png only has a window in its facade: the door,
@@ -50,6 +52,15 @@ R_OUTLINE = (35, 35, 35, 255)
 
 GRASS = {(112, 200, 64), (103, 185, 59)}
 
+# glass stays blue whatever the house style, the frame takes the wall colour
+GLASS = (150, 200, 228, 255)
+GLASS_DARK = (104, 150, 190, 255)
+GLASS_LIGHT = (226, 242, 250, 255)
+FRAME = (212, 203, 107, 255)  # wall beige
+WALL_LINE = (47, 47, 47, 255)
+SHUTTER = R_DARK
+SHUTTER_EDGE = R_DARKER
+
 
 def load_tile(col, row):
     """A tile of tiles.png at art resolution, grass made transparent."""
@@ -70,6 +81,52 @@ def paste_region(dst, src, x0, y0, x1, y1):
             dst.set(x, y, src.get(x, y))
 
 
+def glaze(tile, x0, y0, x1, y1, vertical=False):
+    """Fill the opening (inclusive bounds) with framed glass."""
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            tile.set(x, y, GLASS_DARK if (y == y1 and not vertical) or (x == x1 and vertical) else GLASS)
+    # bar across the middle and a glint in the top-left pane
+    if vertical:
+        for x in range(x0, x1 + 1):
+            tile.set(x, (y0 + y1) // 2, FRAME)
+    else:
+        for y in range(y0, y1 + 1):
+            tile.set((x0 + x1) // 2, y, FRAME)
+    tile.set(x0, y0, GLASS_LIGHT)
+    return tile
+
+
+def facade_window(tile):
+    """The original slot in the facade becomes a window with shutters."""
+    glaze(tile, 8, 19, 16, 20)
+    for y in range(18, 22):
+        for x, col in ((5, SHUTTER_EDGE), (6, SHUTTER), (18, SHUTTER), (19, SHUTTER_EDGE)):
+            tile.set(x, y, col)
+    return tile
+
+
+def room_windows():
+    """Interior walls: the notches of the roofless house become windows."""
+    back = load_tile(2, 1)
+    for x in range(7, 16):
+        back.set(x, 1, WALL_LINE)
+        back.set(x, 2, FRAME)
+        back.set(x, 5, FRAME)
+    glaze(back, 7, 3, 15, 4)
+    left = load_tile(1, 2)
+    for y in range(8, 17):
+        left.set(0, y, WALL_LINE)
+    glaze(left, 1, 8, 2, 16, vertical=True)
+    right = load_tile(4, 2)
+    for y in range(8, 17):
+        right.set(21, y, WALL_LINE)
+    glaze(right, 19, 8, 20, 16, vertical=True)
+    front = load_tile(2, 4)
+    glaze(front, 7, 19, 15, 20)
+    return [back, left, right, front]
+
+
 def with_door(base, door_tile, y0):
     """Replace the middle of a facade with the cottage door."""
     out = base.crop(0, 0, ART, ART)
@@ -86,7 +143,7 @@ def load_facade():
         c = Canvas(ART, ART)
         paste_region(c, tile, 0, 17, ART, ART)
         out.append(c)
-    window = out[1]
+    window = facade_window(out[1])
     out[1] = with_door(out[2], load_tile(14, 2), 17)
     return out, window
 
@@ -399,7 +456,7 @@ def save(canvas, name):
 
 def main():
     facade, window = load_facade()
-    roofs = Canvas(8 * ART, 6 * ART)
+    roofs = Canvas(8 * ART, 7 * ART)
     for shape, draw in enumerate((gable, thatch)):
         for (col, row), tile in slice_roof(draw, facade).items():
             roofs.blit(tile, (shape * 4 + col) * ART, row * ART, transparent=False)
@@ -408,6 +465,9 @@ def main():
     # doors for the hipped roof and the interior of tiles.png
     roofs.blit(with_door(load_tile(3, 9), load_tile(14, 2), 17), 1 * ART, 5 * ART, transparent=False)
     roofs.blit(with_door(load_tile(3, 4), load_tile(11, 2), 16), 2 * ART, 5 * ART, transparent=False)
+    roofs.blit(facade_window(load_tile(2, 9)), 0, 6 * ART, transparent=False)
+    for i, tile in enumerate(room_windows()):
+        roofs.blit(tile, (1 + i) * ART, 6 * ART, transparent=False)
     save(roofs, "roofs.png")
 
     furniture = Canvas(6 * ART, 3 * ART)

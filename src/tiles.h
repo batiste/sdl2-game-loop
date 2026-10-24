@@ -26,7 +26,7 @@
 // Pieces of a house style. Large houses are assembled from the corners,
 // edges and middles of a 4-wide piece set; small houses are used as is.
 #define NUM_HOUSE_STYLES 12
-#define HOUSE_PIECES 90
+#define HOUSE_PIECES 95
 #define PIECE_ROOF(c, r) ((r) * 4 + (c))              // large roof, 4 x 3
 #define PIECE_SMALL_ROOF(c, r) (12 + (r) * 3 + (c))   // small roof, 3 x 3, row 2 is the door step
 #define PIECE_ROOM(c, r) (21 + (r) * 4 + (c))         // large interior, 4 x 4
@@ -39,6 +39,13 @@
 #define PIECE_SHAPED_WINDOW(shape) (86 + (shape))
 #define PIECE_ROOF_DOOR 88
 #define PIECE_ROOM_DOOR 89
+// glazed windows: the hipped facade, then the interior back, left, right
+// and front walls (tiles.png only has openings)
+#define PIECE_ROOF_WINDOW 90
+#define PIECE_ROOM_WINDOW_BACK 91
+#define PIECE_ROOM_WINDOW_LEFT 92
+#define PIECE_ROOM_WINDOW_RIGHT 93
+#define PIECE_ROOM_WINDOW_FRONT 94
 #define GID_HOUSE(style, piece) (GID_HOUSE_BASE + (style) * HOUSE_PIECES + (piece))
 #define GID_IS_HOUSE(gid) ((gid) >= GID_HOUSE_BASE && (gid) < GID_HOUSE_BASE + NUM_HOUSE_STYLES * HOUSE_PIECES)
 #define HOUSE_PIECE(gid) (((gid) - GID_HOUSE_BASE) % HOUSE_PIECES)
@@ -46,7 +53,8 @@
 #define GID_IS_FLAT_HOUSE(gid)                                               \
   (GID_IS_HOUSE(gid) && ((HOUSE_PIECE(gid) >= PIECE_SMALL_ROOF(0, 2) &&      \
                           HOUSE_PIECE(gid) < PIECE_SHAPED(0, 0, 0)) ||        \
-                         HOUSE_PIECE(gid) == PIECE_ROOM_DOOR))
+                         HOUSE_PIECE(gid) == PIECE_ROOM_DOOR ||               \
+                         HOUSE_PIECE(gid) >= PIECE_ROOM_WINDOW_BACK))
 // the landing in front of a door
 #define PIECE_LANDING PIECE_SMALL_ROOF(1, 2)
 

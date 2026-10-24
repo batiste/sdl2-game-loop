@@ -454,9 +454,15 @@ static HousePlan plan_house(Gen *g, const Village *v) {
   return p;
 }
 
-// Which piece of the large house set goes in cell (c, r). backWindow and
-// frontWindow tell whether that column has windows in the back or front wall.
-static int large_piece(const HousePlan *p, int c, int r, bool room, bool backWindow, bool frontWindow) {
+// Which windows a large house has: per column in the back and front walls,
+// per row in the side walls.
+typedef struct Windows {
+  bool back[6], front[6], side[4];
+} Windows;
+
+// Which piece of the large house set goes in cell (c, r).
+static int large_piece(const HousePlan *p, const Windows *win, int c, int r, bool room) {
+  bool backWindow = win->back[c], frontWindow = win->front[c];
   int last = p->w - 1, bottom = p->h - 1;
   int col = c == 0 ? 0 : (c == last ? 3 : 2);
   bool middle = col == 2;
@@ -464,7 +470,8 @@ static int large_piece(const HousePlan *p, int c, int r, bool room, bool backWin
   bool window = r == bottom && middle && frontWindow && !door;
   if (!room && p->shape == 0) {
     if (door) return PIECE_ROOF_DOOR;
-    return PIECE_ROOF(window ? 1 : col, r == 0 ? 0 : (r == bottom ? 2 : 1));
+    if (window) return PIECE_ROOF_WINDOW;
+    return PIECE_ROOF(col, r == 0 ? 0 : (r == bottom ? 2 : 1));
   }
   if (!room) {
     // the ridge runs along the middle: inside row 1 for 3 deep houses,
@@ -474,11 +481,14 @@ static int large_piece(const HousePlan *p, int c, int r, bool room, bool backWin
     int row = p->h == 3 ? ROWS3[r] : ROWS4[r];
     return PIECE_SHAPED(p->shape - 1, door ? 1 : col, row);
   }
-  // inside: window notches in the walls, side windows every other row
+  // inside: windows in the walls, matching the facade
   if (door) return PIECE_ROOM_DOOR;
-  int row = r == 0 ? 0 : (r == bottom ? 3 : (r % 2 ? 1 : 2));
-  bool notch = middle && ((r == 0 && backWindow) || window);
-  return PIECE_ROOM(notch ? 1 : col, row);
+  if (window) return PIECE_ROOM_WINDOW_FRONT;
+  if (r == 0 && middle && backWindow) return PIECE_ROOM_WINDOW_BACK;
+  bool side = r > 0 && r < bottom && !middle;
+  if (side && win->side[r]) return c == 0 ? PIECE_ROOM_WINDOW_LEFT : PIECE_ROOM_WINDOW_RIGHT;
+  // row 2 of the original interior is the plain one (row 1 has openings)
+  return PIECE_ROOM(col, r == 0 ? 0 : (r == bottom ? 3 : 2));
 }
 
 static bool try_house(Gen *g, Village *v, int villageIndex) {
@@ -549,12 +559,19 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
     house->chimneyY = oy - 6;
   }
 
+  Windows win;
+  for (int k = 0; k < 6; k++) {
+    win.back[k] = rndf(g) < 0.4f;
+    win.front[k] = rndf(g) < 0.5f;
+  }
+  for (int k = 0; k < 4; k++) {
+    win.side[k] = rndf(g) < 0.5f;
+  }
   for (int c = 0; c < p.w; c++) {
-    bool backWindow = rndf(g) < 0.4f, frontWindow = rndf(g) < 0.5f;
     for (int r = 0; r < p.h; r++) {
       int i = (hy + r) * g->w + hx + c;
       int outside = p.small ? (p.roof ? PIECE_SMALL_ROOF(c, r) : PIECE_SMALL_ROOM(c, r))
-                            : large_piece(&p, c, r, !p.roof, backWindow, frontWindow);
+                            : large_piece(&p, &win, c, r, !p.roof);
       world->top[i] = (Uint16)GID_HOUSE(p.style, outside);
       world->houseAt[i] = (Sint16)index;
       if (hy + r == stepRow) {
@@ -562,7 +579,7 @@ static bool try_house(Gen *g, Village *v, int villageIndex) {
       }
       world->kind[i] = CELL_HOUSE;
       if (p.roof) {
-        int inside = p.small ? PIECE_SMALL_ROOM(c, r) : large_piece(&p, c, r, true, backWindow, frontWindow);
+        int inside = p.small ? PIECE_SMALL_ROOM(c, r) : large_piece(&p, &win, c, r, true);
         world->interior[i] = (Uint16)GID_HOUSE(p.style, inside);
       }
     }

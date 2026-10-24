@@ -117,7 +117,7 @@ static void apply_tint(Uint8 *p, Tint t) {
 }
 
 // Copy a tile, recolouring the yellow walls with `wall` and the red/brown
-// roof or floor with `other`. Outlines and greys are kept.
+// roof or floor with `other`. Outlines, greys and window glass are kept.
 static void tint_tile(SDL_Surface *dst, int dx, int dy, const SDL_Surface *src, int sx, int sy, Tint wall, Tint other) {
   for (int y = 0; y < TILE_SIZE; y++) {
     const Uint8 *in = (const Uint8 *)src->pixels + (sy + y) * src->pitch + sx * 4;
@@ -126,7 +126,7 @@ static void tint_tile(SDL_Surface *dst, int dx, int dy, const SDL_Surface *src, 
       SDL_memcpy(out, in, 4);
       float h, s, v;
       rgb_to_hsv(in, &h, &s, &v);
-      if (in[3] == 0 || v < 0.26f || s < 0.15f) {
+      if (in[3] == 0 || v < 0.26f || s < 0.15f || (h > 170 && h < 260)) {
         continue;
       }
       apply_tint(out, h >= 40 && h <= 70 ? wall : other);
@@ -166,7 +166,9 @@ static bool build_houses(Atlas *atlas, Engine *engine) {
           if (piece == PIECE_SHAPED_WINDOW(0)) col = 0, other = st->roof;
           else if (piece == PIECE_SHAPED_WINDOW(1)) col = 4, other = st->thatch;
           else if (piece == PIECE_ROOF_DOOR) col = 1, other = st->roof;
-          else col = 2;
+          else if (piece == PIECE_ROOM_DOOR) col = 2;
+          else if (piece == PIECE_ROOF_WINDOW) row = 6, col = 0, other = st->roof;
+          else row = 6, col = 1 + piece - PIECE_ROOM_WINDOW_BACK;
         }
         tint_tile(sheet, piece * TILE_SIZE, y, from, col * TILE_SIZE, row * TILE_SIZE, st->wall, other);
       }
