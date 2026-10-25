@@ -63,6 +63,10 @@ SDL_Surface *engine_load_surface(const char *relative);
 // Upload a surface; the engine owns the texture, the caller keeps the surface.
 SDL_Texture *engine_texture_from_surface(Engine *engine, SDL_Surface *surface);
 
+// Text is drawn with pixel fonts on a grid of ENGINE_FONT_GRID pixels to the
+// em: outlines and shadows are one of their pixels thick.
+#define ENGINE_FONT_GRID 12
+
 // Render black text with a white drop shadow. Caller owns the texture.
 SDL_Texture *engine_render_text(Engine *engine, TTF_Font *font, const char *text);
 // Text in `color` with a one pixel `outline` all around. Caller owns the texture.

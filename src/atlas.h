@@ -16,7 +16,8 @@
 // rows of character.png
 typedef enum { DIR_DOWN, DIR_RIGHT, DIR_UP, DIR_LEFT, DIR_COUNT } Direction;
 
-typedef enum MonsterKind { MON_UNDERLING, MON_LORD, MON_BOSS, MON_SKELETON, MON_KINDS } MonsterKind;
+// bats have no sprite in the atlas: they are drawn from icons
+typedef enum MonsterKind { MON_UNDERLING, MON_LORD, MON_BOSS, MON_SKELETON, MON_BAT, MON_KINDS } MonsterKind;
 
 typedef struct CharacterSheet {
   Animation *walk[DIR_COUNT];

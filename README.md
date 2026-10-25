@@ -12,11 +12,21 @@ waves, protect the villagers and slay the evil lord.
 - Move with WASD or the arrow keys. Your weapons strike on their own.
 - Waves of demons come for you. They bite any villager in their way, and the
   villagers they kill rise again as skeletons. Lords spit green blobs; the
-  evil lord, every fifth wave, fires red ones. Killing him wins the game.
-- Fallen demons leave blue souls: walk near them to gain experience. Each
-  level offers three upgrades to choose from (keys 1 to 3): sword, throwing
-  stones, spirit flames, holy ground, swift boots, vitality, might, haste
-  and soul magnet. Some demons drop hearts.
+  evil lord, every tenth wave, fires red ones. Killing him wins the game.
+  Bats fly straight over houses, trees and water; waves 3, 7, 11... are
+  swarms of them. Between waves, 35 seconds
+  of calm.
+- Every kill gives experience. Each level offers three upgrade cards (keys 1
+  to 3, arrows and Enter, or click): sword, throwing stones, spirit flames,
+  holy ground, molasses (jars that leave puddles slowing the demons down),
+  repulsion (pushes the demons back on a beat), swift boots, vitality, might
+  and haste. Your upgrades show at the top left: hover one to read about
+  it. Some demons drop hearts.
+- Demons also drop gold, and clearing a wave pays a bounty. Between waves,
+  visit the merchant (Shop button, or B) for health potions (drink with Q),
+  bombs (throw at the nearest demons with E), amulets of health and wisdom
+  (more experience), and a wooden shield against the blobs. Blobs fly over
+  houses.
 - Demons cannot enter houses. Villagers hide there, and time stands still
   while you are inside.
 - Between waves, click Next wave (or press Enter) to call the next one.
@@ -56,14 +66,17 @@ waves, protect the villagers and slay the evil lord.
 | Key                 | Action                          |
 | ------------------- | ------------------------------- |
 | W A S D / arrows    | Move (physical keys, so it works on AZERTY too) |
-| 1, 2, 3             | Choose an upgrade               |
+| 1, 2, 3 / click     | Choose an upgrade, buy an item  |
+| Q / E               | Drink a potion / throw a bomb   |
+| B                   | Shop, between waves             |
+| X                   | Skip an upgrade                 |
+| L                   | Level up now (for testing)      |
 | Enter               | Start, continue, next wave      |
-| R                   | Generate a new world            |
 | M                   | Toggle the minimap              |
 | N                   | Pause / resume the music        |
 | F or F11            | Toggle fullscreen               |
 | C                   | Toggle vsync / uncapped FPS     |
-| Esc                 | Quit                            |
+| Esc                 | Menu: resume, new world, settings, quit |
 
 Any key skips the splash screen. Start on a given world with
 `./build/game --seed 42`; the current seed is shown at the bottom of the screen.
@@ -122,7 +135,7 @@ tilesets are defined in `src/tiles.h`.
 | File             | Purpose                                              |
 | ---------------- | ---------------------------------------------------- |
 | `src/main.c`     | Game loop, player, camera, rendering, HUD, music     |
-| `src/combat.*`   | Waves, demons, weapons, upgrades, souls              |
+| `src/combat.*`   | Waves, demons, bats, weapons, upgrades, shop         |
 | `src/worldgen.c` | Procedural world generation                          |
 | `src/world.*`    | World data, collisions and walker path finding       |
 | `src/npc.*`      | Villager and pig behaviour                           |
@@ -130,4 +143,6 @@ tilesets are defined in `src/tiles.h`.
 | `src/atlas.*`    | Tilesets, recoloured villagers, the pig              |
 | `src/engine.*`   | Window, renderer, audio, asset loading and cleanup   |
 | `src/sprite.*`   | Sprites and sprite-sheet animations                  |
+| `src/button.*`   | Pixel art buttons with dented corners                |
+| `src/icons.*`    | Pixel art icons drawn from text: potion, bomb, coin  |
 | `src/tiles.h`    | Tile ids                                             |

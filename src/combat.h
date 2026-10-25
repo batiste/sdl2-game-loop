@@ -3,8 +3,9 @@
 
   The invasion of the evil lords: waves of demons attack the villages.
 
-  The hero's weapons fire on their own at the nearest demons; killed demons
-  leave souls (experience). Each level offers a choice of upgrades.
+  The hero's weapons fire on their own at the nearest demons; each kill
+  gives experience, and some leave gold. Each level offers a choice of
+  upgrades; between waves, gold buys potions, bombs and amulets at the shop.
  */
 
 #ifndef GAME_COMBAT_H
@@ -23,15 +24,26 @@ typedef enum Upgrade {
   UP_STONES,
   UP_FLAMES,
   UP_AURA,
+  UP_MOLASSES,
+  UP_REPEL,
   // passives
   UP_SPEED,
   UP_VITALITY,
   UP_MIGHT,
   UP_HASTE,
-  UP_MAGNET,
   UP_COUNT,
   UP_HEAL = UP_COUNT,  // offered when everything is maxed
 } Upgrade;
+
+// sold at the shop
+typedef enum Item {
+  ITEM_POTION,
+  ITEM_BOMB,
+  ITEM_AMULET,
+  ITEM_WISDOM,
+  ITEM_SHIELD,
+  ITEM_COUNT,
+} Item;
 
 typedef enum CombatEvent {
   EV_LEVEL_UP = 1 << 0,
@@ -43,6 +55,12 @@ typedef enum CombatEvent {
   EV_WAVE_CLEARED = 1 << 6,
   EV_MONSTER_DIED = 1 << 7,
   EV_HERO_HURT = 1 << 8,
+  EV_COIN = 1 << 9,
+  EV_EXPLOSION = 1 << 10,
+  EV_SPLAT = 1 << 11,  // a jar of molasses landed
+  EV_REPEL = 1 << 12,  // the repulsion spell pushed
+  EV_BLOCK = 1 << 13,  // the shield took some of a blob
+  EV_RICOCHET = 1 << 14,  // the shield sent a blob back
 } CombatEvent;
 
 typedef struct Hero {
@@ -53,10 +71,18 @@ typedef struct Hero {
   int invulnerable;  // ticks
   int regenTimer;
 
-  int swordTimer, stoneTimer, auraTimer;
+  int swordTimer, stoneTimer, auraTimer, molassesTimer;
+  // repulsion: ticks until it is ready (below 0 once ready), until the
+  // pulse waiting for the middle of a sword swing (0 if none), and since the last one
+  int repelCooldown, repelTimer, repelAge;
   float flameAngle;
   int slashTimer;  // the sword animation is playing
   bool slashLeft;
+
+  int gold;
+  int potions, bombs, amulets;
+  int wisdom, shields;  // amulets and shields bought
+  float xpCarry;  // fractions of experience from the wisdom amulets
 } Hero;
 
 typedef struct Monster {
@@ -78,6 +104,12 @@ typedef struct Monster {
   int stuck;  // ticks without progress towards the hero
   float flank;  // -1..1: which way and how far round the hero it swings
   int stagger;  // ticks left reeling from a blow, not walking
+  bool slowed;  // wading through molasses
+  // getting no closer to the hero: a detour, or a jump nearer off screen
+  float bestDist;
+  int noProgress;
+  int detour;  // ticks left walking sideways round an obstacle
+  float detourX, detourY;
 } Monster;
 
 typedef struct Shot {
@@ -89,12 +121,41 @@ typedef struct Shot {
   bool hostile;
   bool boss;
   int lastHit;  // monster index, so piercing stones hit each one once
+  bool reflected;  // a blob sent back by the shield, now hurting demons
 } Shot;
 
+typedef enum SoulKind { SOUL_HEART, SOUL_GOLD } SoulKind;
+
+// something lying on the ground, picked up by walking near it
 typedef struct Soul {
   float x, y;
-  int value;  // xp, 0 for a heart
+  SoulKind kind;
+  int value;  // gold
 } Soul;
+
+// thrown towards (x, y): flies, lands, and goes off when the fuse is out,
+// or a jar of molasses that spills where it lands
+typedef struct Bomb {
+  float fromX, fromY, x, y;
+  int flight;  // ticks left in the air
+  int fuse;    // ticks left on the ground
+  bool molasses;
+} Bomb;
+
+// spilled molasses: demons in it are slowed down
+typedef struct Puddle {
+  float x, y, radius;
+  float slow;  // speed factor inside
+  int life, maxLife;
+} Puddle;
+
+typedef struct Explosion {
+  float x, y;
+  int life;
+} Explosion;
+
+#define BOMB_FLIGHT 22
+#define EXPLOSION_TICKS 24
 
 // half of a killed monster drifting away
 typedef struct Debris {
@@ -116,6 +177,7 @@ typedef struct Popup {
   int amount;
   int life;
   bool hero;  // damage taken by the hero
+  bool heal;  // health given back to the hero
 } Popup;
 
 #define POPUP_TICKS 30
@@ -127,6 +189,9 @@ typedef enum WaveState { WAVE_CALM, WAVE_ATTACK } WaveState;
 #define MAX_DEBRIS 128
 #define MAX_SLASHES 8
 #define MAX_POPUPS 192
+#define MAX_BOMBS 8
+#define MAX_EXPLOSIONS 8
+#define MAX_PUDDLES 12
 
 typedef struct Combat {
   Uint64 rng;
@@ -144,6 +209,12 @@ typedef struct Combat {
   int numSlashes;
   Popup popups[MAX_POPUPS];
   int numPopups;
+  Bomb bombs[MAX_BOMBS];
+  int numBombs;
+  Explosion explosions[MAX_EXPLOSIONS];
+  int numExplosions;
+  Puddle puddles[MAX_PUDDLES];
+  int numPuddles;
 
   int wave;
   WaveState waveState;
@@ -152,12 +223,17 @@ typedef struct Combat {
   int spawnTimer;
   int targetVillage;
   bool bossPending;
+  bool batWave;  // a swarm: mostly bats
   bool bossAlive;
 
   // walking cost from every cell to the hero, shared by all the demons
   float *field;
   int fieldTimer;
   int fieldCell;
+
+  // the view around the hero, in pixels: demons stuck out of it may jump
+  // closer, staying out of sight. Set by the caller, 0 for never.
+  float viewW, viewH;
 
   int kills;
   int villagersLost;
@@ -180,6 +256,10 @@ float combat_flame_radius(void);
 // Level up: pick UPGRADE_CHOICES options, then apply the chosen one.
 int combat_upgrade_options(Combat *combat, Upgrade out[UPGRADE_CHOICES]);
 void combat_apply_upgrade(Combat *combat, Upgrade upgrade);
+// Let a pending level go without an upgrade.
+void combat_skip_upgrade(Combat *combat);
+// A level for free, for testing.
+void combat_level_up(Combat *combat);
 const char *upgrade_name(Upgrade upgrade);
 const char *upgrade_description(Upgrade upgrade);
 
@@ -187,5 +267,22 @@ int combat_alive_monsters(const Combat *combat);
 
 // Skip the rest of the calm and start the next wave now.
 void combat_next_wave(Combat *combat);
+
+// The shop. Items can't be bought past combat_item_max() of each.
+#define MAX_ITEMS 5
+int combat_item_max(Item item);
+const char *item_name(Item item);
+const char *item_description(Item item);
+int combat_item_price(const Combat *combat, Item item);
+int combat_item_count(const Combat *combat, Item item);
+bool combat_buy(Combat *combat, Item item);  // false if too poor or full
+
+// Use what was bought; false when there is none, or no need.
+bool combat_drink_potion(Combat *combat);
+bool combat_throw_bomb(Combat *combat, float heroX, float heroY);
+float combat_bomb_radius(void);
+
+// The repulsion spell pushes between sword slashes; 0 radius without it.
+float combat_repel_radius(const Combat *combat);
 
 #endif

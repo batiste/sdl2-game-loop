@@ -21,8 +21,10 @@ find_package(SDL3_mixer REQUIRED CONFIG)
 add_executable(game
   src/main.c
   src/atlas.c
+  src/button.c
   src/combat.c
   src/engine.c
+  src/icons.c
   src/npc.c
   src/pathfind.c
   src/sprite.c

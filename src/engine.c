@@ -214,6 +214,11 @@ MIX_Audio *engine_load_audio(Engine *engine, const char *relative, bool predecod
   return audio;
 }
 
+// One pixel of a pixel font, in screen pixels.
+static int font_pixel(TTF_Font *font) {
+  return SDL_max(1, (int)SDL_lroundf(TTF_GetFontSize(font) / ENGINE_FONT_GRID));
+}
+
 SDL_Texture *engine_render_text(Engine *engine, TTF_Font *font, const char *text) {
   return engine_render_text_wrapped(engine, font, text, 0);
 }
@@ -222,15 +227,18 @@ SDL_Texture *engine_render_outlined_text(Engine *engine, TTF_Font *font, const c
                                          SDL_Color outline) {
   SDL_Surface *back = TTF_RenderText_Solid(font, text, 0, outline);
   SDL_Surface *front = TTF_RenderText_Solid(font, text, 0, color);
-  SDL_Surface *surface = back && front ? SDL_CreateSurface(front->w + 4, front->h + 4, SDL_PIXELFORMAT_RGBA32) : NULL;
+  // one font pixel all around, at most 2 screen pixels so big titles stay crisp
+  int t = SDL_min(2, font_pixel(font));
+  SDL_Surface *surface =
+      back && front ? SDL_CreateSurface(front->w + 2 * t, front->h + 2 * t, SDL_PIXELFORMAT_RGBA32) : NULL;
   SDL_Texture *texture = NULL;
   if (surface) {
-    for (int dy = -2; dy <= 2; dy += 2) {
-      for (int dx = -2; dx <= 2; dx += 2) {
-        SDL_BlitSurface(back, NULL, surface, &(SDL_Rect){2 + dx, 2 + dy, back->w, back->h});
+    for (int dy = -t; dy <= t; dy++) {
+      for (int dx = -t; dx <= t; dx++) {
+        SDL_BlitSurface(back, NULL, surface, &(SDL_Rect){t + dx, t + dy, back->w, back->h});
       }
     }
-    SDL_BlitSurface(front, NULL, surface, &(SDL_Rect){2, 2, front->w, front->h});
+    SDL_BlitSurface(front, NULL, surface, &(SDL_Rect){t, t, front->w, front->h});
     texture = SDL_CreateTextureFromSurface(engine->renderer, surface);
   }
   SDL_DestroySurface(back);
@@ -248,11 +256,13 @@ SDL_Texture *engine_render_text_wrapped(Engine *engine, TTF_Font *font, const ch
   SDL_Surface *surface = NULL;
   SDL_Texture *texture = NULL;
 
+  // the shadow one font pixel down and to the right
+  int t = font_pixel(font);
   if (shadow && front) {
-    surface = SDL_CreateSurface(front->w + 2, front->h + 1, SDL_PIXELFORMAT_RGBA32);
+    surface = SDL_CreateSurface(front->w + t, front->h + t, SDL_PIXELFORMAT_RGBA32);
   }
   if (surface) {
-    SDL_BlitSurface(shadow, NULL, surface, &(SDL_Rect){2, 1, shadow->w, shadow->h});
+    SDL_BlitSurface(shadow, NULL, surface, &(SDL_Rect){t, t, shadow->w, shadow->h});
     SDL_BlitSurface(front, NULL, surface, &(SDL_Rect){0, 0, front->w, front->h});
     texture = SDL_CreateTextureFromSurface(engine->renderer, surface);
   }
