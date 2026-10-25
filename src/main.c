@@ -1352,7 +1352,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     render_game(game, now);
   }
 
-  SDL_RenderPresent(game->engine.renderer);
+  engine_present(&game->engine);
   return SDL_APP_CONTINUE;
 }
 

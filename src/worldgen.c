@@ -958,6 +958,7 @@ World *world_generate(Uint64 seed, int width, int height) {
     make_gardens(&g);
     make_signs(&g);
     decorate(&g);
+    ok = world_build_steps(world);
 
     if (world->numVillages > 0) {
       const Village *v = &world->villages[0];

@@ -60,6 +60,8 @@ typedef struct World {
   Box *solid;        // BOXES_PER_CELL per cell
   Uint8 *kind;       // CellKind, for the minimap and path costs
   Sint16 *houseAt;   // house index per cell, -1 outside houses
+  Uint8 *steps;      // per cell, bit d set when a walker can step to the
+                     // neighbour in direction d (right, left, down, up)
 
   House *houses;
   int numHouses;
@@ -70,6 +72,9 @@ typedef struct World {
 } World;
 
 World *world_generate(Uint64 seed, int width, int height);
+
+// Work out the steps once the world is built: it never changes afterwards.
+bool world_build_steps(World *world);
 void world_free(World *world);
 
 static inline bool world_in_bounds(const World *w, int x, int y) {

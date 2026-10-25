@@ -26,6 +26,8 @@ struct Engine {
   int scale;  // screen pixels per logical pixel
   int viewHeight;
   bool vsync;
+  Uint64 framePeriod;  // ns between frames when capped below the refresh rate, 0 if not
+  Uint64 nextFrame;  // when the next capped frame is due
 
   // every loaded asset, released by engine_shutdown()
   struct EngineResource *resources;
@@ -40,6 +42,9 @@ void engine_shutdown(Engine *engine);
 
 void engine_set_vsync(Engine *engine, bool enabled);
 void engine_toggle_fullscreen(Engine *engine);
+
+// Show the frame, keeping to about 60 fps on high refresh displays.
+void engine_present(Engine *engine);
 
 // Adapt the logical resolution to the window; call when its size changes.
 void engine_fit_view(Engine *engine);
