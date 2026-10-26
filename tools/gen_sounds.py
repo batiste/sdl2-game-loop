@@ -19,6 +19,7 @@ is a low thud.
   assets/repel.wav                a soft low whoosh, the beat of the repel amulets
   assets/block.wav                a wooden knock, a blob hitting the shield
   assets/ricochet.wav             a bright ping bending up, a blob bounced off the shield
+  assets/heartbeat.wav            lub-dub, when the hero is about to die
 
 Usage: python3 tools/gen_sounds.py   (standard library only)
 """
@@ -211,6 +212,22 @@ def ping(seed):
     return out
 
 
+def heartbeat():
+    """Two muffled low thumps, the second softer: lub-dub."""
+    out = []
+    for beat, (freq, gain) in enumerate(((70, 1.0), (58, 0.7))):
+        n = int(RATE * 0.12)
+        phase = 0.0
+        for i in range(n):
+            t = i / n
+            phase += freq * (1 - 0.3 * t) / RATE
+            envelope = min(1.0, i / (RATE * 0.004)) * (1 - t) ** 2
+            out.append(math.sin(phase * 2 * math.pi) * envelope * gain * 0.9)
+        if beat == 0:
+            out += [0.0] * int(RATE * 0.08)
+    return out
+
+
 def buzz(seconds):
     n = int(RATE * seconds)
     return [(1.0 if (i * 110 / RATE) % 1.0 < 0.5 else -1.0) * 0.35 * (1 - i / n) for i in range(n)]
@@ -245,6 +262,7 @@ def main():
     save(whoosh(13), "repel.wav")
     save(knock(14), "block.wav")
     save(ping(15), "ricochet.wav")
+    save(heartbeat(), "heartbeat.wav")
 
 
 if __name__ == "__main__":

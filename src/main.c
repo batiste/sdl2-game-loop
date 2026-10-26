@@ -59,7 +59,16 @@
 #define MAX_CARDS 6
 #define COMPACT_CARD_WIDTH 340
 #define COMPACT_TEXT_X 64  // where the text starts on a compact card, right of the icon
-#define BOMB_SHAKE 10.0f  // pixels the view shakes when a bomb goes off
+#define HITSTOP_MAX 14    // ticks the fight holds still after a blow, at most
+#define SLOWMO_SCALE 0.25f  // how fast time runs at the start of a slow motion, easing back to normal
+#define WAVE_SLOWMO_NS SDL_MS_TO_NS(700)   // the last demon of a wave falls in slow motion...
+#define BOSS_SLOWMO_NS SDL_MS_TO_NS(1500)  // ...the evil lord longer, and then the victory
+#define LEVEL_UP_FLOURISH_NS SDL_MS_TO_NS(400)  // a burst of light round the hero, then the cards
+#define LOW_HEALTH 0.3f       // share of health under which the heart beats...
+#define HEARTBEAT_TICKS 45    // ...this often
+#define BIG_HIT 10            // damage numbers this high are bigger, and golden
+#define COMBO_SHOWN 3         // kills in a row before their count shows
+#define COMBO_FADE_NS SDL_MS_TO_NS(600)
 #define DEATH_HOP 0.35f   // seconds the hero jolts up, flashing...
 #define DEATH_FALL 0.9f   // ...until he has fallen over...
 #define DEATH_SCENE_NS SDL_MS_TO_NS(2800)  // ...and after a silence, the game over
@@ -87,9 +96,11 @@ typedef struct Drawable {
   float x, y;
   bool flip;
   float scale;  // 0 means 1
+  float sx, sy;  // squashed and stretched by these, standing on its feet; 0 means 1
   float fade;   // 0 opaque, 1 invisible
   bool tinted;
   SDL_Color tint;
+  bool flash;  // white, struck
   int icon;  // drawn when there is no sprite
 } Drawable;
 
@@ -151,8 +162,10 @@ typedef struct Game {
   MIX_Track *hurtTrack, *heroDeathTrack;
   MIX_Track *levelUpTrack, *selectTrack, *tickTrack;
   MIX_Track *explosionTrack, *coinTrack, *potionTrack, *deniedTrack, *splatTrack, *repelTrack, *blockTrack;
-  MIX_Track *ricochetTrack;
+  MIX_Track *ricochetTrack, *heartTrack;
   Uint64 lastDeathSound;
+  float coinPitch;  // a run of coins goes up the scale
+  Uint64 lastCoin;
   // village music when calm, combat music during waves
   MIX_Audio *music[3];
   MIX_Track *musicTrack[3];
@@ -178,8 +191,19 @@ typedef struct Game {
   SDL_FRect nextWaveButton, shopButton, leaveButton, skipButton;  // empty when not shown
   SDL_Texture *nextWaveLabel, *shopLabel, *leaveLabel, *skipLabel;
   float shake;  // how far the view shakes, in pixels
+  float kickX, kickY;  // the view pushed along a blow, springing back
+  int hitstop;  // ticks the fight holds still, for the weight of a blow
+  Uint64 slowAt, slowNs;  // slow motion started then, for so long
+  Uint64 levelUpAt;  // the flourish before the level up cards, 0 if none
+  Uint64 victoryAt;  // the evil lord fell: the victory comes after the slow motion, 0 if none
+  Uint64 hurtAt;  // the hero's last wound, for the red at the edges
   float xpShown;  // the experience bar fills up smoothly
   int xpLevel;
+  float hpShown;  // the health lost drains away from the bar
+  int goldShown;
+  Uint64 goldAt;  // the gold jumps when it goes up
+  int comboShown;
+  Uint64 comboAt, comboEndAt;  // the count jumps with each kill, and fades once over
   Uint64 lastHud;
 
   // pause menu, over the scene it was opened from
@@ -202,7 +226,7 @@ typedef struct Game {
   Uint64 fpsTimer;
   TextSlot infoText, hpText, levelText, statusText, villagersText;
   TextSlot goldText, potionText, bombText, shopGoldText;
-  TextSlot amuletText, wisdomText, shieldText, tipTitle, tipText;
+  TextSlot amuletText, wisdomText, shieldText, tipTitle, tipText, comboText;
   SDL_FRect upgradeRects[UP_COUNT];  // the upgrade icons at the top left, for the mouse
   SDL_Texture *bannerText;
   Uint64 bannerShownAt;
@@ -210,7 +234,7 @@ typedef struct Game {
   SDL_Texture *greetings[NUM_GREETINGS];
   SDL_Texture *oink;
   SDL_Texture *help;
-  SDL_Texture *digits[3][10];  // damage numbers: dealt, taken, healed
+  SDL_Texture *digits[4][10];  // damage numbers: dealt, taken, healed, and big
 
   // modal panel: intro, level up, game over, victory
   SDL_Texture *panelTitle;
@@ -248,13 +272,8 @@ static void set_text(Game *game, SDL_Texture **slot, TTF_Font *font, const char 
   *slot = engine_render_text(&game->engine, font, text);
 }
 
-static SDL_PRINTF_VARARG_FUNC(6) void draw_text(Game *game, TextSlot *slot, TTF_Font *font, float x, float y,
-                                                 SDL_PRINTF_FORMAT_STRING const char *fmt, ...) {
-  char text[sizeof(slot->text)];
-  va_list args;
-  va_start(args, fmt);
-  SDL_vsnprintf(text, sizeof(text), fmt, args);
-  va_end(args);
+// The texture of the text, rendered again only when it changed.
+static SDL_Texture *slot_texture(Game *game, TextSlot *slot, TTF_Font *font, const char *text) {
   if (!slot->texture || SDL_strcmp(text, slot->text) != 0) {
     SDL_strlcpy(slot->text, text, sizeof(slot->text));
     SDL_DestroyTexture(slot->texture);
@@ -262,7 +281,17 @@ static SDL_PRINTF_VARARG_FUNC(6) void draw_text(Game *game, TextSlot *slot, TTF_
                                                                  (SDL_Color){58, 41, 41, 255})
                                    : engine_render_text(&game->engine, font, text);
   }
-  if (slot->texture) {
+  return slot->texture;
+}
+
+static SDL_PRINTF_VARARG_FUNC(6) void draw_text(Game *game, TextSlot *slot, TTF_Font *font, float x, float y,
+                                                 SDL_PRINTF_FORMAT_STRING const char *fmt, ...) {
+  char text[sizeof(slot->text)];
+  va_list args;
+  va_start(args, fmt);
+  SDL_vsnprintf(text, sizeof(text), fmt, args);
+  va_end(args);
+  if (slot_texture(game, slot, font, text)) {
     SDL_FRect dest = {x, y, 0, 0};
     SDL_GetTextureSize(slot->texture, &dest.w, &dest.h);
     if (x < 0) {
@@ -314,6 +343,19 @@ static void play_sound(MIX_Track *track) {
   if (track) {
     MIX_PlayTrack(track, 0);
   }
+}
+
+// Played higher or lower: ratio 1 is as recorded.
+static void play_pitched(MIX_Track *track, float ratio) {
+  if (track) {
+    MIX_SetTrackFrequencyRatio(track, ratio);
+    MIX_PlayTrack(track, 0);
+  }
+}
+
+// A little different every time, so repeats don't sound like a machine.
+static void play_varied(MIX_Track *track) {
+  play_pitched(track, 0.92f + 0.16f * SDL_randf());
 }
 
 // ---------------------------------------------------------------- world
@@ -380,6 +422,11 @@ static bool new_world(Game *game, Uint64 seed) {
   game->roofAlpha = 1;
   game->currentVillage = -2;  // show the banner for the starting village
   game->heroDown = false;
+  game->hitstop = 0;
+  game->shake = game->kickX = game->kickY = 0;
+  game->slowNs = game->levelUpAt = game->victoryAt = game->hurtAt = 0;
+  game->hpShown = (float)game->combat.hero.hp;
+  game->goldShown = game->comboShown = 0;
   build_minimap(game);
   return true;
 }
@@ -503,6 +550,7 @@ static void open_level_up(Game *game) {
   build_cards(game, specs, count, false);
   game->selected = 0;
   game->chosen = game->flashCard = game->deniedCard = -1;
+  game->levelUpAt = 0;  // the flourish is over, or skipped with the L key
 
   // the level reached with this choice, when several are pending
   char title[64];
@@ -514,7 +562,9 @@ static void open_level_up(Game *game) {
   game->panelBody = NULL;
   game->scene = SCENE_LEVEL_UP;
   game->panelOpenedAt = SDL_GetTicksNS();
-  play_sound(game->levelUpTrack);
+  if (game->levelUpTrack && !MIX_TrackPlaying(game->levelUpTrack)) {  // not again after the flourish
+    play_sound(game->levelUpTrack);
+  }
 }
 
 // The shop's cards, made again after each purchase.
@@ -571,7 +621,7 @@ static void buy_item(Game *game, int i) {
     build_shop_cards(game);
     game->flashCard = i;
     game->flashAt = SDL_GetTicksNS();
-    play_sound(game->coinTrack);
+    play_pitched(game->coinTrack, 1);
   } else {
     game->deniedCard = i;
     game->deniedAt = SDL_GetTicksNS();
@@ -713,7 +763,7 @@ static void play_death(Game *game, MIX_Audio *sound) {
     MIX_Track *track = game->deathTracks[i];
     if (track && !MIX_TrackPlaying(track)) {
       MIX_SetTrackAudio(track, sound);
-      MIX_PlayTrack(track, 0);
+      play_pitched(track, sound == game->bossDeath ? 1 : 0.88f + 0.24f * SDL_randf());
       game->lastDeathSound = game->tick;
       return;
     }
@@ -735,6 +785,15 @@ static void freeze_motion(Game *game) {
   for (int i = 0; i < c->numShots; i++) {
     c->shots[i].prevX = c->shots[i].x, c->shots[i].prevY = c->shots[i].y;
   }
+}
+
+static void slow_motion(Game *game, Uint64 ns) {
+  game->slowAt = SDL_GetTicksNS();
+  game->slowNs = ns;
+}
+
+static bool low_health(const Hero *hero) {
+  return hero->hp > 0 && (float)hero->hp <= (float)hero->maxHp * LOW_HEALTH;
 }
 
 static void update(Game *game) {
@@ -759,6 +818,10 @@ static void update(Game *game) {
   }
 
   bool moving = length > 0;
+  if (moving && !game->frozen && game->tick % 8 == 0) {
+    // dust kicked up behind
+    combat_burst(&game->combat, PART_DUST, 1, game->x - dx / length * 6, game->y, 2, -dx, -dy, 0.5f);
+  }
   if (up) game->facing = DIR_UP;
   if (down) game->facing = DIR_DOWN;
   if (left) game->facing = DIR_LEFT;
@@ -787,10 +850,15 @@ static void update(Game *game) {
     game->sprite = animation_frame(swing, (Uint64)(12 - hero->slashTimer));
   }
   if ((events & EV_SLASH) && game->sfxTrack && !MIX_TrackPlaying(game->sfxTrack)) {
-    MIX_PlayTrack(game->sfxTrack, 0);
+    play_varied(game->sfxTrack);
   }
-  if ((events & EV_HERO_HURT) && game->hurtTrack) {
-    MIX_PlayTrack(game->hurtTrack, 0);
+  if (events & EV_HERO_HURT) {
+    play_varied(game->hurtTrack);
+    game->hurtAt = SDL_GetTicksNS();
+    combat_burst(&game->combat, PART_BLOOD, 10, game->x, game->y, 22, 0, 0, 2.5f);
+  }
+  if (low_health(hero) && game->tick % HEARTBEAT_TICKS == 0) {
+    play_sound(game->heartTrack);
   }
   if (events & EV_BOSS_KILLED) {
     play_death(game, game->bossDeath);
@@ -798,33 +866,48 @@ static void update(Game *game) {
     play_death(game, game->deathSounds[SDL_rand(3)]);
   }
   if ((events & EV_COIN) && game->coinTrack && !MIX_TrackPlaying(game->coinTrack)) {
-    MIX_PlayTrack(game->coinTrack, 0);
+    // a semitone up for each coin in a run
+    game->coinPitch = game->tick - game->lastCoin < 40 ? SDL_min(2.0f, game->coinPitch * 1.06f) : 1;
+    game->lastCoin = game->tick;
+    play_pitched(game->coinTrack, game->coinPitch);
   }
   if (events & EV_SPLAT) {
-    play_sound(game->splatTrack);
+    play_varied(game->splatTrack);
   }
   if (events & EV_REPEL) {
-    play_sound(game->repelTrack);
+    play_varied(game->repelTrack);
   }
   if (events & EV_BLOCK) {
-    play_sound(game->blockTrack);
+    play_varied(game->blockTrack);
   }
   if (events & EV_RICOCHET) {
-    play_sound(game->ricochetTrack);
+    play_varied(game->ricochetTrack);
   }
   if (events & EV_EXPLOSION) {
-    play_sound(game->explosionTrack);
-    game->shake = BOMB_SHAKE;
+    play_varied(game->explosionTrack);
   }
+
+  // the weight of the blows: see SDL_AppIterate() and render_game()
+  Impact *impact = &game->combat.impact;
+  game->hitstop = SDL_min(HITSTOP_MAX, SDL_max(game->hitstop, impact->hitstop));
+  game->shake = SDL_max(game->shake, impact->shake);
+  game->kickX += impact->kickX;
+  game->kickY += impact->kickY;
+  *impact = (Impact){0};
   game->shake = game->shake > 0.5f ? game->shake * 0.86f : 0;
+  game->kickX *= 0.7f;
+  game->kickY *= 0.7f;
+
   if (events & EV_MESSAGE) {
     show_banner(game, game->combat.message);
   }
   if (events & EV_WAVE_STARTED) {
     play_music(game, MUSIC_COMBAT, false);
+    game->shake = SDL_max(game->shake, 5.0f);
   }
   if (events & EV_WAVE_CLEARED) {
     play_music(game, MUSIC_VILLAGE, false);
+    slow_motion(game, WAVE_SLOWMO_NS);  // the last one falls slowly
   }
 
   if (events & EV_PLAYER_DIED) {
@@ -832,12 +915,19 @@ static void update(Game *game) {
     game->scene = SCENE_DYING;
     game->heroDown = true;
     game->diedAt = SDL_GetTicksNS();
+    game->levelUpAt = game->victoryAt = game->slowNs = 0;
     stop_music(game, 150);
     play_sound(game->heroDeathTrack);
   } else if (events & EV_BOSS_KILLED) {
-    open_victory(game);
-  } else if (events & EV_LEVEL_UP) {
-    open_level_up(game);
+    // the victory after the slow motion, see SDL_AppIterate()
+    game->victoryAt = SDL_GetTicksNS() + BOSS_SLOWMO_NS;
+    slow_motion(game, BOSS_SLOWMO_NS);
+  } else if ((events & EV_LEVEL_UP) && !game->levelUpAt && !game->victoryAt) {
+    // a burst of light, and the cards when it has died down
+    game->levelUpAt = SDL_GetTicksNS();
+    slow_motion(game, LEVEL_UP_FLOURISH_NS);
+    combat_burst(&game->combat, PART_GOLD, 30, game->x, game->y, 20, 0, 0, 3.5f);
+    play_sound(game->levelUpTrack);
   }
 
   update_banner(game);
@@ -921,9 +1011,24 @@ static void draw_drawable(SDL_Renderer *renderer, const Drawable *d) {
   if (d->fade > 0) {
     SDL_SetTextureAlphaModFloat(texture, 1 - d->fade);
   }
-  SDL_FRect dest = {d->x, d->y, d->sprite->source.w * scale, d->sprite->source.h * scale};
-  SDL_RenderTextureRotated(renderer, texture, &d->sprite->source, &dest, 0, NULL,
-                           d->flip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
+  float w = d->sprite->source.w * scale, h = d->sprite->source.h * scale;
+  SDL_FRect dest = {d->x, d->y, w, h};
+  if (d->sx > 0 || d->sy > 0) {
+    // on the 2x art pixel grid, still standing on its feet
+    dest.w = SDL_roundf(w * (d->sx > 0 ? d->sx : 1) / 2) * 2;
+    dest.h = SDL_roundf(h * (d->sy > 0 ? d->sy : 1) / 2) * 2;
+    dest.x = SDL_roundf(d->x + (w - dest.w) / 2);
+    dest.y = d->y + h - dest.h;
+  }
+  SDL_FlipMode flip = d->flip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+  SDL_RenderTextureRotated(renderer, texture, &d->sprite->source, &dest, 0, NULL, flip);
+  if (d->flash) {
+    // added on top, twice: nearly white
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_ADD);
+    SDL_RenderTextureRotated(renderer, texture, &d->sprite->source, &dest, 0, NULL, flip);
+    SDL_RenderTextureRotated(renderer, texture, &d->sprite->source, &dest, 0, NULL, flip);
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+  }
   if (d->tinted) {
     SDL_SetTextureColorMod(texture, 255, 255, 255);
   }
@@ -951,6 +1056,15 @@ static float ease_out_cubic(float t) {
 static float ease_out_back(float t) {
   float u = SDL_clamp(t, 0.0f, 1.0f) - 1;
   return 1 + 2.7f * u * u * u + 1.7f * u * u;
+}
+
+// A spring let go: 1 when left ticks are all there is, swinging through 0
+// and back, still once they have run out. Squashes things, then stretches them.
+static float spring(int left, int length) {
+  if (left <= 0) {
+    return 0;
+  }
+  return (float)left / (float)length * SDL_cosf((float)(length - left) * SDL_PI_F / 4);
 }
 
 // The same pseudo random number in 0..1 for the same n, every frame.
@@ -1026,9 +1140,15 @@ static void render_souls(Game *game, float camX, float camY) {
   float time = (float)(game->worldTick % 1000);
   for (int i = 0; i < c->numSouls; i++) {
     const Soul *s = &c->souls[i];
-    float x = s->x - camX, y = s->y - camY + SDL_sinf(time * 0.15f + (float)i) * 2;
+    float x = s->x - camX, y = s->y - camY;
     if (x < -10 || y < -10 || x > (float)game->engine.width + 10 || y > (float)game->engine.height + 10) {
       continue;
+    }
+    if (s->z > 0) {
+      fill(renderer, x - 4, y + 4, 8, 2, (SDL_Color){0, 0, 0, 60});  // its shadow, while it hops
+      y -= s->z;
+    } else if (s->pull == 0) {
+      y += SDL_sinf(time * 0.15f + (float)i) * 2;  // bobbing, waiting
     }
     if (s->kind == SOUL_GOLD) {
       icon_draw(renderer, ICON_COIN, x - 6, y - 6, 2);
@@ -1040,6 +1160,72 @@ static void render_souls(Game *game, float camX, float camY) {
       fill(renderer, x - 4, y - 2, 10, 2, red);
       fill(renderer, x - 2, y, 6, 2, red);
       fill(renderer, x, y + 2, 2, 2, red);
+    }
+  }
+}
+
+// What the fight left on the ground: splats of demon blood, scorch marks,
+// dried molasses, fading away.
+static void render_marks(Game *game, float camX, float camY) {
+  SDL_Renderer *renderer = game->engine.renderer;
+  const Combat *c = &game->combat;
+  float viewW = (float)game->engine.width, viewH = (float)game->engine.height;
+  for (int i = 0; i < c->numMarks; i++) {
+    const Mark *m = &c->marks[i];
+    float x = m->x - camX, y = m->y - camY;
+    float fade = SDL_min(1.0f, (float)m->life / MARK_FADE_TICKS);
+    if (x < -100 || y < -100 || x > viewW + 100 || y > viewH + 100) {
+      continue;
+    }
+    switch (m->kind) {
+      case MARK_ICHOR:
+        // a few blobs round a bigger one
+        for (Uint32 k = 0; k < 6; k++) {
+          float a = hash01(m->seed + k * 3) * 2 * SDL_PI_F, d = k == 0 ? 0 : (4 + hash01(m->seed + k * 3 + 1) * 10) * m->size;
+          float size = SDL_floorf((k == 0 ? 10 : 4 + hash01(m->seed + k * 3 + 2) * 4) * m->size / 2) * 2;
+          fill(renderer, x + SDL_cosf(a) * d - size / 2, y + SDL_sinf(a) * d * 0.6f - size / 2, size, size * 0.7f,
+               (SDL_Color){96, 18, 30, (Uint8)(150 * fade)});
+        }
+        break;
+      case MARK_SCORCH:
+        render_disc(renderer, x, y, m->size, (SDL_FColor){0.1f, 0.07f, 0.05f, 0.55f * fade},
+                    (SDL_FColor){0.2f, 0.15f, 0.08f, 0});
+        for (Uint32 k = 0; k < 10; k++) {
+          float a = hash01(m->seed + k) * 2 * SDL_PI_F, d = (0.5f + hash01(m->seed + k + 20) * 0.6f) * m->size;
+          fill(renderer, x + SDL_cosf(a) * d, y + SDL_sinf(a) * d * 0.7f, 4, 2, (SDL_Color){40, 30, 24, (Uint8)(140 * fade)});
+        }
+        break;
+      case MARK_MOLASSES:
+        render_disc(renderer, x, y, m->size * 0.9f, (SDL_FColor){0.5f, 0.27f, 0.04f, 0.4f * fade},
+                    (SDL_FColor){0.6f, 0.36f, 0.08f, 0.1f * fade});
+        break;
+    }
+  }
+}
+
+// Specks flying off the blows, above everything on the ground.
+static void render_particles(Game *game, float camX, float camY) {
+  SDL_Renderer *renderer = game->engine.renderer;
+  const Combat *c = &game->combat;
+  static const SDL_Color COLORS[][2] = {
+      // young, old
+      [PART_SPARK] = {{255, 255, 255, 255}, {255, 214, 90, 255}},
+      [PART_ICHOR] = {{150, 26, 40, 255}, {96, 16, 28, 255}},
+      [PART_BLOOD] = {{226, 40, 50, 255}, {150, 20, 30, 255}},
+      [PART_GOLD] = {{255, 250, 200, 255}, {255, 200, 60, 255}},
+      [PART_HEAL] = {{210, 255, 190, 255}, {100, 220, 80, 255}},
+      [PART_DUST] = {{232, 222, 190, 255}, {214, 200, 160, 255}},
+  };
+  for (int i = 0; i < c->numParticles; i++) {
+    const Particle *p = &c->particles[i];
+    float age = 1 - (float)p->life / (float)p->maxLife;
+    SDL_Color color = COLORS[p->kind][age < 0.4f ? 0 : 1];
+    float size = p->kind == PART_DUST ? 4 + SDL_floorf(age * 2) * 2 : age < 0.5f ? 4 : 2;
+    color.a = (Uint8)(color.a * (p->kind == PART_DUST ? 0.6f * (1 - age) : SDL_min(1.0f, (1 - age) * 3)));
+    if (p->kind == PART_GOLD && (p->life / 3) % 2 == 0) {
+      draw_star(renderer, p->x - camX, p->y - p->z - camY, 1, color);  // glinting
+    } else {
+      fill(renderer, p->x - camX - size / 2, p->y - p->z - camY - size / 2, size, size, color);
     }
   }
 }
@@ -1087,9 +1273,69 @@ static void render_aura(Game *game, float px, float py, float camX, float camY) 
   }
 }
 
+// Kills in a row, over the hero's head: bigger and hotter as they go on.
+static void render_combo(Game *game, float x, float y) {
+  const Combat *c = &game->combat;
+  Uint64 now = SDL_GetTicksNS();
+  if (c->combo >= COMBO_SHOWN) {
+    if (c->combo > game->comboShown) {
+      game->comboAt = now;
+    }
+    game->comboShown = c->combo;
+    game->comboEndAt = 0;
+  } else if (game->comboShown > 0 && !game->comboEndAt) {
+    game->comboEndAt = now;  // over: fading out
+  }
+  if (game->comboShown < COMBO_SHOWN) {
+    return;
+  }
+  float fade = game->comboEndAt ? 1 - (float)(now - game->comboEndAt) / (float)COMBO_FADE_NS : 1;
+  if (fade <= 0) {
+    game->comboShown = 0;
+    return;
+  }
+  int n = game->comboShown;
+  char text[16];
+  SDL_snprintf(text, sizeof(text), "x%d%s", n, n >= 25 ? "!!" : n >= 10 ? "!" : "");
+  SDL_Texture *texture = slot_texture(game, &game->comboText, game->font, text);
+  if (!texture) {
+    return;
+  }
+  float pop = (float)(now - game->comboAt) / (float)SDL_MS_TO_NS(160);
+  float scale = (1 + (float)SDL_min(n, 40) / 80) * (pop < 1 ? lerp(1.6f, 1, ease_out_back(pop)) : 1);
+  SDL_Color color = n >= 40 ? (SDL_Color){255, 90, 70, 255}
+                    : n >= 20 ? (SDL_Color){255, 160, 60, 255}
+                    : n >= 10 ? (SDL_Color){255, 226, 90, 255}
+                              : (SDL_Color){255, 255, 255, 255};
+  SDL_FPoint size = texture_size(texture);
+  SDL_FRect dest = {0, 0, SDL_roundf(size.x * scale), SDL_roundf(size.y * scale)};
+  dest.x = SDL_roundf(x + 22);
+  dest.y = SDL_roundf(y - 64 - dest.h / 2 - (1 - fade) * 16);
+  SDL_SetTextureColorMod(texture, color.r, color.g, color.b);
+  SDL_SetTextureAlphaModFloat(texture, fade);
+  SDL_RenderTexture(game->engine.renderer, texture, NULL, &dest);
+  SDL_SetTextureColorMod(texture, 255, 255, 255);
+  SDL_SetTextureAlphaModFloat(texture, 1);
+}
+
 static void render_effects(Game *game, float px, float py, float camX, float camY, float t) {
   SDL_Renderer *renderer = game->engine.renderer;
   const Combat *c = &game->combat;
+
+  render_particles(game, camX, camY);
+
+  // a level reached: a ring of gold going out, light rising
+  if (game->levelUpAt) {
+    float p = SDL_min(1.0f, (float)(SDL_GetTicksNS() - game->levelUpAt) / (float)LEVEL_UP_FLOURISH_NS);
+    float r = 16 + 110 * ease_out_cubic(p);
+    render_disc(renderer, px - camX, py - 16 - camY, 40 * (1 - p) + 10, (SDL_FColor){1, 0.95f, 0.7f, 0.6f * (1 - p)},
+                (SDL_FColor){1, 0.85f, 0.3f, 0});
+    for (int k = 0; k < 48; k++) {
+      float a = (float)k * 2 * SDL_PI_F / 48;
+      fill(renderer, px - camX + SDL_cosf(a) * r - 2, py - 10 - camY + SDL_sinf(a) * r * 0.7f - 2, 4, 4,
+           (SDL_Color){255, 226, 110, (Uint8)(255 * (1 - p))});
+    }
+  }
 
   for (int i = 0; i < c->numShots; i++) {
     const Shot *s = &c->shots[i];
@@ -1209,16 +1455,30 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
     fill(renderer, x - 2, y - 2, 4, 6, (SDL_Color){255, 230, 110, 255});
   }
 
-  // sword slashes: a crescent fading out
+  // sword slashes: the edge sweeps across in a flash, a crescent trailing
+  // behind it and fading out
   for (int i = 0; i < c->numSlashes; i++) {
     const Slash *s = &c->slashes[i];
-    Uint8 alpha = (Uint8)(255 * s->life / 10);
-    for (int k = -5; k <= 5; k++) {
-      float a = s->angle + (float)k * s->arc / 5;
-      float r = s->range * (0.75f + 0.1f * (1 - SDL_fabsf((float)k) / 5));
-      float size = k == 0 ? 6 : 4;
-      fill(renderer, s->x - camX + SDL_cosf(a) * r - size / 2, s->y - camY + SDL_sinf(a) * r - size / 2, size, size,
-           (SDL_Color){255, 255, 255, alpha});
+    float age = 10 - (float)s->life + t;  // ticks
+    float fade = SDL_clamp(1 - (age - 3) / 7, 0.0f, 1.0f);
+    float lead = -s->arc + 2 * s->arc * ease_out_cubic(age / 3);
+    for (int k = 0; k <= 14; k++) {
+      float a = -s->arc + 2 * s->arc * (float)k / 14;
+      if (a > lead + 0.01f) {
+        break;
+      }
+      float behind = (lead - a) / (2 * s->arc);  // 0 at the edge
+      float thick = 1 - SDL_fabsf(a) / s->arc;  // thinner at the tips
+      Uint8 alpha = (Uint8)(255 * fade * (1 - 0.75f * behind));
+      SDL_Color color = behind < 0.12f ? (SDL_Color){255, 255, 255, alpha} : (SDL_Color){206, 228, 255, alpha};
+      for (int row = 0; row < 3; row++) {
+        if (row != 1 && thick < 0.3f) {
+          continue;
+        }
+        float r = s->range * (0.66f + 0.12f * (float)row), size = row == 1 ? 6 : 4;
+        float x = s->x - camX + SDL_cosf(s->angle + a) * r, y = s->y - camY + SDL_sinf(s->angle + a) * r;
+        fill(renderer, x - size / 2, y - size / 2, size, size, color);
+      }
     }
   }
 
@@ -1227,12 +1487,16 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
     const Popup *p = &c->popups[i];
     char text[12];
     SDL_snprintf(text, sizeof(text), "%d", p->amount);
-    SDL_Texture *const *set = game->digits[p->heal ? 2 : p->hero ? 1 : 0];
+    bool big = !p->hero && p->amount >= BIG_HIT;
+    SDL_Texture *const *set = game->digits[p->heal ? 2 : p->hero ? 1 : big ? 3 : 0];
+    // popping out big, and settling
+    float age = (float)(POPUP_TICKS - p->life) + t;
+    float scale = (big ? 2.0f : 1.0f) * (age < 6 ? lerp(1.8f, 1, ease_out_back(age / 6)) : 1);
     float w = 0, h = 0;
     for (const char *ch = text; *ch; ch++) {
       float dw, dh;
       if (set[*ch - '0'] && SDL_GetTextureSize(set[*ch - '0'], &dw, &dh)) {
-        w += dw - 4, h = dh;
+        w += (dw - 4) * scale, h = dh * scale;
       }
     }
     float x = SDL_roundf((p->hero ? px : p->x) - camX - w / 2);
@@ -1243,11 +1507,13 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
       float dw, dh;
       if (digit && SDL_GetTextureSize(digit, &dw, &dh)) {
         SDL_SetTextureAlphaModFloat(digit, alpha);
-        SDL_RenderTexture(renderer, digit, NULL, &(SDL_FRect){x, y, dw, dh});
-        x += dw - 4;
+        SDL_RenderTexture(renderer, digit, NULL, &(SDL_FRect){x, y, SDL_roundf(dw * scale), SDL_roundf(dh * scale)});
+        x += (dw - 4) * scale;
       }
     }
   }
+
+  render_combo(game, px - camX, py - camY);
 
   // health bars of the big demons
   for (int i = 0; i < c->numMonsters; i++) {
@@ -1301,6 +1567,7 @@ static void render_world(Game *game, float camX, float camY, float t) {
   }
 
   float px = lerp(game->prevX, game->x, t), py = lerp(game->prevY, game->y, t);
+  render_marks(game, camX, camY);
   render_puddles(game, camX, camY);
   render_souls(game, camX, camY);
   render_aura(game, px, py, camX, camY);
@@ -1368,12 +1635,32 @@ static void render_world(Game *game, float camX, float camY, float t) {
     const Sprite *sprite = &game->atlas.monsters[m->kind];
     float scale = m->kind == MON_BOSS ? 2 : 1;
     float bob = m->moving && (game->worldTick / 8 + (Uint64)i) % 2 ? -2 : 0;
+    // struck: white, squashed, then red while it springs back
+    float k = spring(m->hurtTimer, HURT_TICKS);
+    bool struck = m->hurtTimer >= HURT_TICKS - 1;
+    float sx = 1 + 0.3f * k, sy = 1 - 0.25f * k;
+    bool glowing = false;
+    float hx = game->x - m->x, hy = game->y - m->y, hd = SDL_sqrtf(hx * hx + hy * hy);
+    if ((m->kind == MON_LORD || m->kind == MON_BOSS) && m->target == -1 && m->shootTimer <= 12 && hd < 320) {
+      // drawing itself up to spit, glowing
+      float w = 1 - (float)m->shootTimer / 12;
+      sx -= 0.1f * w, sy += 0.14f * w;
+      glowing = w > 0.5f && (game->worldTick / 2) % 2;
+    }
+    float lunge = 0;
+    if (m->attackTimer > 27 && hd > 0.01f) {
+      // a snap forward with the bite
+      lunge = SDL_sinf((float)(35 - m->attackTimer) / 8 * SDL_PI_F) * 6;
+    }
+    float lx = m->target == -1 && hd > 0.01f ? hx / hd : (m->faceLeft ? -1.0f : 1.0f);
+    float ly = m->target == -1 && hd > 0.01f ? hy / hd : 0;
     push_drawable(game, &count, (Drawable){
-        .key = y, .sprite = sprite, .flip = m->faceLeft, .scale = scale,
-        .x = SDL_roundf(x - sprite->source.w * scale / 2 - camX),
-        .y = SDL_roundf(y - sprite->source.h * scale - camY + bob),
-        .tinted = m->hurtTimer > 0 || m->slowed,
+        .key = y, .sprite = sprite, .flip = m->faceLeft, .scale = scale, .sx = sx, .sy = sy,
+        .x = SDL_roundf(x - sprite->source.w * scale / 2 - camX + lx * lunge),
+        .y = SDL_roundf(y - sprite->source.h * scale - camY + bob + ly * lunge * 0.7f),
+        .tinted = (m->hurtTimer > 0 && !struck) || m->slowed,
         .tint = m->hurtTimer > 0 ? (SDL_Color){255, 110, 110, 255} : (SDL_Color){214, 160, 96, 255},
+        .flash = struck || glowing,
     });
   }
 
@@ -1398,10 +1685,17 @@ static void render_world(Game *game, float camX, float camY, float t) {
   const Hero *hero = &combat->hero;
   bool blink = hero->invulnerable > 0 && (game->tick / 3) % 2;
   if (!game->heroDown) {
+    // squashed by a wound, stretched into a swing
+    int wound = hero->invulnerable - (HERO_INVULNERABLE - HURT_TICKS);
+    float k = spring(wound, HURT_TICKS);
+    float swing = hero->slashTimer > 8 ? (float)(hero->slashTimer - 8) / 4 : 0;
+    bool struck = hero->invulnerable >= HERO_INVULNERABLE - 2;
     push_drawable(game, &count, (Drawable){
         .key = py, .sprite = game->sprite,
         .x = SDL_roundf(px - CHARACTER_OFFSET_X - camX), .y = SDL_roundf(py - CHARACTER_OFFSET_Y - camY),
-        .tinted = hero->invulnerable > 0, .tint = {255, 120, 120, 255}, .fade = blink ? 0.5f : 0,
+        .sx = 1 + 0.2f * k + 0.12f * swing, .sy = 1 - 0.18f * k - 0.08f * swing,
+        .tinted = hero->invulnerable > 0 && !struck, .tint = {255, 120, 120, 255}, .fade = blink && !struck ? 0.5f : 0,
+        .flash = struck,
     });
     if (hero->shields > 0) {
       // in the left hand, or slung on the back when walking away
@@ -1549,9 +1843,21 @@ static void render_hud(Game *game, Uint64 now) {
   float health = (bar.w - 4) * (float)hero->hp / (float)hero->maxHp;
   button_shape(renderer, bar, outline);
   button_shape(renderer, (SDL_FRect){bar.x + 2, bar.y + 2, bar.w - 4, bar.h - 4}, (SDL_Color){96, 24, 24, 255});
+  // what was lost drains away, after a moment
+  if ((float)hero->hp >= game->hpShown) {
+    game->hpShown = (float)hero->hp;
+  } else if (now - game->hurtAt > SDL_MS_TO_NS(300)) {
+    game->hpShown = SDL_max((float)hero->hp, game->hpShown - dt * (float)hero->maxHp * 0.6f);
+  }
+  float lost = (bar.w - 4) * game->hpShown / (float)hero->maxHp;
+  if (lost - health >= 2) {
+    button_shape(renderer, (SDL_FRect){bar.x + 2, bar.y + 2, SDL_max(10.0f, lost), bar.h - 4},
+                 (SDL_Color){255, 214, 160, 255});
+  }
   if (hero->hp > 0) {
+    bool struck = now - game->hurtAt < SDL_MS_TO_NS(90);
     button_shape(renderer, (SDL_FRect){bar.x + 2, bar.y + 2, SDL_max(10.0f, health), bar.h - 4},
-                 (SDL_Color){222, 52, 42, 255});
+                 struck ? (SDL_Color){255, 255, 255, 255} : (SDL_Color){222, 52, 42, 255});
     fill(renderer, bar.x + 6, bar.y + 4, SDL_max(2.0f, health - 8), 2, (SDL_Color){255, 140, 120, 255});
   }
   char text[64];
@@ -1574,11 +1880,19 @@ static void render_hud(Game *game, Uint64 now) {
   float filled = (xpBar.w - 4) * SDL_clamp(game->xpShown, 0.0f, 1.0f);
   button_shape(renderer, xpBar, outline);
   button_shape(renderer, (SDL_FRect){xpBar.x + 2, xpBar.y + 2, xpBar.w - 4, xpBar.h - 4}, (SDL_Color){28, 44, 84, 255});
-  if (filled >= 1) {
+  if (game->levelUpAt) {
+    // full, and flashing until the cards come
+    bool on = (now - game->levelUpAt) / SDL_MS_TO_NS(60) % 2 == 0;
+    button_shape(renderer, (SDL_FRect){xpBar.x + 2, xpBar.y + 2, xpBar.w - 4, xpBar.h - 4},
+                 on ? (SDL_Color){255, 255, 255, 255} : (SDL_Color){255, 226, 110, 255});
+  } else if (filled >= 1) {
     bool gaining = xp - game->xpShown > 0.01f;  // glows while it fills
     button_shape(renderer, (SDL_FRect){xpBar.x + 2, xpBar.y + 2, SDL_max(10.0f, filled), xpBar.h - 4},
                  gaining ? (SDL_Color){170, 220, 255, 255} : (SDL_Color){100, 170, 255, 255});
     fill(renderer, xpBar.x + 6, xpBar.y + 4, SDL_max(2.0f, filled - 8), 2, (SDL_Color){210, 236, 255, 255});
+    if (gaining) {
+      fill(renderer, xpBar.x + 2 + SDL_max(10.0f, filled) - 4, xpBar.y + 2, 4, xpBar.h - 4, (SDL_Color){255, 255, 255, 255});
+    }
   }
 
   game->nextWaveButton = game->shopButton = (SDL_FRect){0};
@@ -1623,10 +1937,16 @@ static void render_hud(Game *game, Uint64 now) {
   }
 
   // gold and what was bought, while playing: the shop shows its own
+  if (hero->gold > game->goldShown) {
+    game->goldAt = now;  // more gold: it jumps
+  }
+  game->goldShown = hero->gold;
   if (game->scene == SCENE_PLAYING) {
     float bag = (float)game->engine.height - 34;
-    icon_draw(renderer, ICON_COIN, 12, bag + 6, 2);
-    draw_text(game, &game->goldText, game->smallFont, 30, bag, "%d", hero->gold);
+    float jump = (float)(now - game->goldAt) / (float)SDL_MS_TO_NS(220);
+    jump = jump < 1 ? SDL_roundf(SDL_sinf(jump * SDL_PI_F) * 3) * 2 : 0;
+    icon_draw(renderer, ICON_COIN, 12, bag + 6 - jump, 2);
+    draw_text(game, &game->goldText, game->smallFont, 30, bag - jump, "%d", hero->gold);
     icon_draw(renderer, ICON_POTION, 96, bag - 2, 2);
     draw_text(game, &game->potionText, game->smallFont, 120, bag, "%d  Q", hero->potions);
     icon_draw(renderer, ICON_BOMB, 184, bag - 2, 2);
@@ -1681,12 +2001,20 @@ static void render_hud(Game *game, Uint64 now) {
   Uint64 shown = now - game->bannerShownAt;
   if (game->bannerText && shown < BANNER_NS && game->scene == SCENE_PLAYING) {
     float fade = SDL_min(1.0f, (float)(BANNER_NS - shown) / (float)SDL_MS_TO_NS(500));
-    SDL_FRect dest;
-    SDL_GetTextureSize(game->bannerText, &dest.w, &dest.h);
+    float age = (float)shown / (float)SDL_NS_PER_SECOND;
+    // slammed down from big, with a flash
+    float scale = lerp(1.8f, 1, ease_out_back(age / 0.22f));
+    SDL_FPoint size = texture_size(game->bannerText);
+    SDL_FRect dest = {0, 0, SDL_roundf(size.x * scale), SDL_roundf(size.y * scale)};
     dest.x = SDL_roundf((width - dest.w) / 2);
-    dest.y = 86;
+    dest.y = SDL_roundf(86 + (size.y - dest.h) / 2);
+    SDL_FRect back = {dest.x - 24, dest.y - 8, dest.w + 48, dest.h + 16};
     SDL_SetRenderDrawColor(renderer, 34, 34, 34, (Uint8)(150 * fade));
-    SDL_RenderFillRect(renderer, &(SDL_FRect){dest.x - 24, dest.y - 8, dest.w + 48, dest.h + 16});
+    SDL_RenderFillRect(renderer, &back);
+    if (age < 0.12f) {
+      SDL_SetRenderDrawColor(renderer, 255, 255, 255, (Uint8)(200 * (1 - age / 0.12f)));
+      SDL_RenderFillRect(renderer, &back);
+    }
     SDL_SetTextureAlphaModFloat(game->bannerText, fade);
     SDL_RenderTexture(renderer, game->bannerText, NULL, &dest);
   }
@@ -2134,10 +2462,42 @@ static void render_splash(Game *game, Uint64 elapsed) {
   SDL_RenderTexture(renderer, game->splash, NULL, &dest);
 }
 
+// Red at the edges of the view: a flash with a wound, beating with the heart
+// when the hero is close to death.
+static void render_vignette(Game *game, Uint64 now, float t) {
+  const Hero *hero = &game->combat.hero;
+  float hurt = game->hurtAt ? 1 - (float)(now - game->hurtAt) / (float)SDL_MS_TO_NS(450) : 0;
+  float a = SDL_max(0.0f, hurt) * 0.55f;
+  if (low_health(hero)) {
+    // lub-dub, with the sound (see update())
+    float beat = ((float)(game->tick % HEARTBEAT_TICKS) + t) / HEARTBEAT_TICKS;
+    float pulse = SDL_max(0.0f, 1 - beat * 6) + 0.6f * SDL_max(0.0f, 1 - SDL_fabsf(beat - 0.3f) * 6);
+    a = SDL_max(a, 0.18f + 0.25f * pulse);
+  }
+  if (a < 0.01f) {
+    return;
+  }
+  float w = (float)game->engine.width, h = (float)game->engine.height, e = SDL_min(w, h) * 0.25f;
+  SDL_FPoint outer[4] = {{0, 0}, {w, 0}, {w, h}, {0, h}}, inner[4] = {{e, e}, {w - e, e}, {w - e, h - e}, {e, h - e}};
+  SDL_FColor red = {0.75f, 0.02f, 0.06f, a}, clear = {0.75f, 0.02f, 0.06f, 0};
+  SDL_Vertex v[24];
+  for (int k = 0; k < 4; k++) {
+    int n = (k + 1) % 4;
+    v[k * 6 + 0] = (SDL_Vertex){outer[k], red, {0, 0}};
+    v[k * 6 + 1] = (SDL_Vertex){outer[n], red, {0, 0}};
+    v[k * 6 + 2] = (SDL_Vertex){inner[n], clear, {0, 0}};
+    v[k * 6 + 3] = (SDL_Vertex){outer[k], red, {0, 0}};
+    v[k * 6 + 4] = (SDL_Vertex){inner[n], clear, {0, 0}};
+    v[k * 6 + 5] = (SDL_Vertex){inner[k], clear, {0, 0}};
+  }
+  SDL_RenderGeometry(game->engine.renderer, NULL, v, 24, NULL, 0);
+}
+
 static void render_game(Game *game, Uint64 now) {
   const World *world = game->world;
   // interpolate between the last two physics ticks for smooth motion
-  float t = game->scene == SCENE_PLAYING ? (float)game->accumulator / (float)TICK_NS : 1;
+  // held at the last tick while the fight stands still after a blow
+  float t = game->scene == SCENE_PLAYING && game->hitstop == 0 ? (float)game->accumulator / (float)TICK_NS : 1;
   float x = lerp(game->prevX, game->x, t), y = lerp(game->prevY, game->y, t);
 
   // camera follows the player, without showing outside the world
@@ -2154,11 +2514,16 @@ static void render_game(Game *game, Uint64 now) {
     camX += SDL_roundf((SDL_randf() - 0.5f) * 2 * shake);
     camY += SDL_roundf((SDL_randf() - 0.5f) * 2 * shake);
   }
+  camX += SDL_roundf(game->kickX);
+  camY += SDL_roundf(game->kickY);
 
   update_roof(game, now);
   SDL_SetRenderDrawColor(game->engine.renderer, 0x70, 0xc8, 0x40, 0xff);
   SDL_RenderClear(game->engine.renderer);
   render_world(game, camX, camY, t);
+  if (!game->heroDown) {
+    render_vignette(game, now, t);
+  }
   render_minimap(game, t);
   render_hud(game, now);
   if (game->heroDown) {
@@ -2366,7 +2731,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   game->leaveLabel = engine_render_text(engine, game->smallFont, "Leave");
   game->skipLabel = engine_render_text(engine, game->smallFont, "Skip  X");
   game->shopGoldText.outlined = true;
-  game->hpText.outlined = game->levelText.outlined = true;
+  game->hpText.outlined = game->levelText.outlined = game->comboText.outlined = true;
   for (int i = 0; i < MENU_COUNT; i++) {
     game->menuKeys[i].outlined = true;
   }
@@ -2380,6 +2745,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     game->digits[0][i] = engine_render_outlined_text(engine, game->smallFont, digit, (SDL_Color){255, 255, 255, 255}, outline);
     game->digits[1][i] = engine_render_outlined_text(engine, game->smallFont, digit, (SDL_Color){255, 70, 60, 255}, outline);
     game->digits[2][i] = engine_render_outlined_text(engine, game->smallFont, digit, (SDL_Color){120, 232, 90, 255}, outline);
+    game->digits[3][i] = engine_render_outlined_text(engine, game->smallFont, digit, (SDL_Color){255, 214, 72, 255}, outline);
   }
 
   game->swish = engine_load_audio(engine, "swish-2.ogg", true);
@@ -2406,6 +2772,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   game->repelTrack = sound_track(engine, "repel.wav", 0.45f);
   game->blockTrack = sound_track(engine, "block.wav", 0.8f);
   game->ricochetTrack = sound_track(engine, "ricochet.wav", 0.7f);
+  game->heartTrack = sound_track(engine, "heartbeat.wav", 0.9f);
   for (int i = 0; engine->mixer && i < DEATH_VOICES; i++) {
     game->deathTracks[i] = MIX_CreateTrack(engine->mixer);
     if (game->deathTracks[i]) {
@@ -2627,6 +2994,15 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   return SDL_APP_CONTINUE;
 }
 
+// Slow motion starts slow and eases back to normal speed.
+static float time_scale(const Game *game, Uint64 now) {
+  if (now - game->slowAt >= game->slowNs) {
+    return 1;
+  }
+  float p = (float)(now - game->slowAt) / (float)game->slowNs;
+  return lerp(SLOWMO_SCALE, 1, p * p);
+}
+
 SDL_AppResult SDL_AppIterate(void *appstate) {
   Game *game = appstate;
   Uint64 now = SDL_GetTicksNS();
@@ -2644,6 +3020,13 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   if (game->scene == SCENE_LEVEL_UP && game->chosen >= 0 && now - game->chosenAt >= CHOICE_FLASH_NS) {
     apply_choice(game);
   }
+  if (game->scene == SCENE_PLAYING && game->victoryAt && now >= game->victoryAt) {
+    game->victoryAt = 0;
+    open_victory(game);
+  } else if (game->scene == SCENE_PLAYING && game->levelUpAt && now - game->levelUpAt >= LEVEL_UP_FLOURISH_NS) {
+    game->levelUpAt = 0;
+    open_level_up(game);
+  }
   if (game->scene == SCENE_DYING && now - game->diedAt >= DEATH_SCENE_NS) {
     open_game_over(game);
     play_music(game, MUSIC_GAME_OVER, true);
@@ -2652,10 +3035,15 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   if (game->scene != SCENE_SPLASH) {
     if (game->scene == SCENE_PLAYING) {
       // never try to catch up more than MAX_FRAME_NS, e.g. after a breakpoint
-      game->accumulator += SDL_min(now - game->lastTime, MAX_FRAME_NS);
+      Uint64 elapsed = SDL_min(now - game->lastTime, MAX_FRAME_NS);
+      game->accumulator += (Uint64)((double)elapsed * (double)time_scale(game, now));
       game->lastTime = now;
       while (game->accumulator >= TICK_NS && game->scene == SCENE_PLAYING) {
-        update(game);
+        if (game->hitstop > 0) {
+          game->hitstop--;  // holding still after a blow
+        } else {
+          update(game);
+        }
         game->accumulator -= TICK_NS;
       }
     }
@@ -2688,7 +3076,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   MIX_Track *tracks[] = {game->hurtTrack,      game->heroDeathTrack, game->levelUpTrack, game->selectTrack,
                          game->tickTrack,      game->explosionTrack, game->coinTrack,    game->potionTrack,
                          game->deniedTrack,    game->splatTrack,     game->repelTrack, game->blockTrack,
-                         game->ricochetTrack};
+                         game->ricochetTrack, game->heartTrack};
   for (int i = 0; i < (int)SDL_arraysize(tracks); i++) {
     if (tracks[i]) {
       MIX_DestroyTrack(tracks[i]);
@@ -2696,7 +3084,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   }
   TextSlot *slots[] = {&game->infoText, &game->hpText,     &game->levelText, &game->statusText,   &game->villagersText,
                        &game->goldText, &game->potionText, &game->bombText,  &game->shopGoldText,
-                       &game->amuletText, &game->wisdomText, &game->shieldText, &game->tipTitle, &game->tipText};
+                       &game->amuletText, &game->wisdomText, &game->shieldText, &game->tipTitle, &game->tipText, &game->comboText};
   for (int i = 0; i < (int)SDL_arraysize(slots); i++) {
     SDL_DestroyTexture(slots[i]->texture);
   }
@@ -2724,6 +3112,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     SDL_DestroyTexture(game->digits[0][i]);
     SDL_DestroyTexture(game->digits[1][i]);
     SDL_DestroyTexture(game->digits[2][i]);
+    SDL_DestroyTexture(game->digits[3][i]);
   }
   SDL_free(game->drawables);
   combat_free(&game->combat);

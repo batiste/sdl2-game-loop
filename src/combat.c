@@ -19,7 +19,6 @@
 
 #define HERO_HP 40
 #define FIELD_TICKS 25  // how often the way to the hero is worked out again
-#define HERO_INVULNERABLE 28
 #define FIRST_WAVE_DELAY (20 * TICKS_PER_SECOND)
 #define CALM_DELAY (35 * TICKS_PER_SECOND)
 
@@ -86,6 +85,7 @@
 #define SURROUND_BOOST 1.35f  // ...with a burst of speed
 #define BITE_RANGE 34.0f      // close enough to go straight in
 #define BITE_REACH 10.0f      // a demon bites what is closer than this plus its radius
+#define COMBO_TICKS 60        // kills closer together than this make a combo
 
 typedef struct MonsterInfo {
   float hp, speed, damage;
@@ -109,6 +109,11 @@ static float rndf(Combat *c) {
 
 static int rnd(Combat *c, int n) {
   return SDL_rand_r(&c->rng, n);
+}
+
+// for the looks: -1..1
+static float fx(Combat *c) {
+  return SDL_randf_r(&c->fxRng) * 2 - 1;
 }
 
 static float dist2(float ax, float ay, float bx, float by) {
@@ -174,7 +179,7 @@ void combat_jump_to_wave(Combat *c, int wave) {
 
 void combat_init(Combat *c, Uint64 seed) {
   combat_free(c);
-  *c = (Combat){.rng = seed ^ 0xd1b54a32d192ed03ull};
+  *c = (Combat){.rng = seed ^ 0xd1b54a32d192ed03ull, .fxRng = seed ^ 0x9e3779b97f4a7c15ull};
   c->hero = (Hero){.hp = HERO_HP, .maxHp = HERO_HP, .nextLevel = LEVEL_XP, .repelAge = 1000};
   c->hero.levels[UP_SWORD] = 1;
   c->waveState = WAVE_CALM;
@@ -230,9 +235,79 @@ static void remove_monster(Combat *c, int i) {
 
 // ---------------------------------------------------------------- effects
 
+// It hops out of the demon and lands a little way off.
 static void add_soul(Combat *c, float x, float y, SoulKind kind, int value) {
   if (c->numSouls < MAX_SOULS) {
-    c->souls[c->numSouls++] = (Soul){x + (rndf(c) - 0.5f) * 10, y + (rndf(c) - 0.5f) * 6, kind, value};
+    c->souls[c->numSouls++] = (Soul){
+        .x = x + (rndf(c) - 0.5f) * 10, .y = y + (rndf(c) - 0.5f) * 6, .vz = 3.5f + fx(c),
+        .vx = fx(c) * 1.4f, .vy = fx(c) * 0.9f, .kind = kind, .value = value,
+    };
+  }
+}
+
+// The screen holds still, shakes, and is pushed along the blow: see Impact.
+static void jolt(Combat *c, int hitstop, float shake) {
+  c->impact.hitstop = SDL_max(c->impact.hitstop, hitstop);
+  c->impact.shake = SDL_max(c->impact.shake, shake);
+}
+
+void combat_burst(Combat *c, ParticleKind kind, int count, float x, float y, float z, float dirX, float dirY,
+                  float speed) {
+  float d = SDL_sqrtf(dirX * dirX + dirY * dirY);
+  for (int k = 0; k < count && c->numParticles < MAX_PARTICLES; k++) {
+    float vx, vy;
+    if (d > 0.01f) {
+      // a cone along the blow
+      float a = SDL_atan2f(dirY, dirX) + fx(c) * 0.7f, s = speed * (0.5f + 0.5f * SDL_fabsf(fx(c)));
+      vx = SDL_cosf(a) * s, vy = SDL_sinf(a) * s * 0.7f;
+    } else {
+      float a = fx(c) * SDL_PI_F, s = speed * (0.3f + 0.7f * SDL_fabsf(fx(c)));
+      vx = SDL_cosf(a) * s, vy = SDL_sinf(a) * s * 0.7f;
+    }
+    static const int LIFE[] = {[PART_SPARK] = 9,  [PART_ICHOR] = 28, [PART_BLOOD] = 26,
+                               [PART_GOLD] = 22,  [PART_HEAL] = 30,  [PART_DUST] = 18};
+    float up = kind == PART_SPARK ? 1 + fx(c) : kind == PART_DUST ? 0.3f : kind == PART_HEAL ? 1.2f : 2.5f + 1.5f * fx(c);
+    int life = LIFE[kind] + (int)(fx(c) * (float)LIFE[kind] * 0.3f);
+    c->particles[c->numParticles++] = (Particle){x, y, z, vx, vy, up, life, life, kind};
+  }
+}
+
+static void update_particles(Combat *c) {
+  for (int i = c->numParticles - 1; i >= 0; i--) {
+    Particle *p = &c->particles[i];
+    p->x += p->vx;
+    p->y += p->vy;
+    p->z += p->vz;
+    switch (p->kind) {
+      case PART_SPARK:  // fast, and soon gone
+        p->vx *= 0.8f, p->vy *= 0.8f, p->vz *= 0.8f;
+        break;
+      case PART_DUST:
+      case PART_HEAL:  // drifting up
+        p->vx *= 0.9f, p->vy *= 0.9f;
+        break;
+      default:  // falling, bouncing on the ground
+        p->vz -= 0.35f;
+        if (p->z < 0) {
+          p->z = 0;
+          p->vz = -p->vz * 0.35f;
+          p->vx *= 0.5f, p->vy *= 0.5f;
+        }
+        break;
+    }
+    if (--p->life <= 0) {
+      c->particles[i] = c->particles[--c->numParticles];
+    }
+  }
+}
+
+static void add_mark(Combat *c, MarkKind kind, float x, float y, float size) {
+  Mark mark = {x, y, size, kind, MARK_TICKS, (Uint32)SDL_rand_bits_r(&c->fxRng)};
+  if (c->numMarks < MAX_MARKS) {
+    c->marks[c->numMarks++] = mark;
+  } else {
+    c->marks[c->nextMark] = mark;
+    c->nextMark = (c->nextMark + 1) % MAX_MARKS;
   }
 }
 
@@ -269,6 +344,18 @@ static void kill_monster(Combat *c, int i) {
   if (rndf(c) < HEART_CHANCE) {
     add_soul(c, m->x + 10, m->y, SOUL_HEART, 0);
   }
+  bool boss = m->kind == MON_BOSS;
+  combat_burst(c, PART_ICHOR, boss ? 40 : 8, m->x, m->y, boss ? 40 : 14, m->kickX, m->kickY, boss ? 4 : 2.5f);
+  if (m->kind != MON_BAT) {
+    add_mark(c, MARK_ICHOR, m->x, m->y, boss ? 2 : 1);
+  }
+  if (boss) {
+    jolt(c, 14, 14);
+  } else if (m->kind == MON_LORD) {
+    jolt(c, 4, 3);
+  }
+  c->combo++;
+  c->comboTimer = COMBO_TICKS;
   c->kills++;
   c->events |= EV_MONSTER_DIED;
   remove_monster(c, i);
@@ -295,8 +382,11 @@ static bool hit_monster(Combat *c, int i, float damage, float fromX, float fromY
   Monster *m = &c->monsters[i];
   popup(c, m->x, m->y - (m->kind == MON_BOSS ? 70 : 34), SDL_min(damage, m->hp), false);
   m->hp -= damage;
-  m->hurtTimer = 8;
+  m->hurtTimer = HURT_TICKS;
   float dx = m->x - fromX, dy = m->y - fromY, d = SDL_sqrtf(dx * dx + dy * dy);
+  float z = m->kind == MON_BOSS ? 40 : m->kind == MON_BAT ? 26 : 14;
+  combat_burst(c, PART_SPARK, 3, m->x, m->y, z, dx, dy, 5);
+  combat_burst(c, PART_ICHOR, 2, m->x, m->y, z, dx, dy, 2);
   if (d > 0.01f && m->kind != MON_BOSS) {
     m->kickX += dx / d * kick;
     m->kickY += dy / d * kick;
@@ -315,6 +405,7 @@ static void hurt_hero(Combat *c, float damage) {
   }
   popup(c, 0, -46, SDL_ceilf(damage), true);  // follows the hero, see main.c
   c->events |= EV_HERO_HURT;
+  jolt(c, 3, 4);
   h->hp = SDL_max(0, h->hp - (int)SDL_ceilf(damage));
   h->invulnerable = HERO_INVULNERABLE;
   if (h->hp == 0) {
@@ -829,7 +920,7 @@ static void use_sword(Combat *c, float hx, float hy) {
   Monster *t = &c->monsters[target];
   float angle = SDL_atan2f(t->y - 12 - (hy - 12), t->x - hx);
   float damage = (3 + (float)level) * might(c);
-  int directions = level >= 3 ? 2 : 1;
+  int directions = level >= 3 ? 2 : 1, hits = 0;
   for (int k = 0; k < directions; k++) {
     float a = angle + (float)k * SDL_PI_F;
     if (c->numSlashes < MAX_SLASHES) {
@@ -842,12 +933,19 @@ static void use_sword(Combat *c, float hx, float hy) {
       if (d < range + INFO[m->kind].radius && diff < arc) {
         m->stagger = STAGGER_TICKS;  // set first: hit_monster may remove it
         hit_monster(c, i, damage, hx, hy, SWORD_PUSH);
+        hits++;
       } else if (d < range + SWORD_SHOVE_REACH + INFO[m->kind].radius && diff < arc && m->kind != MON_BOSS) {
         // the front of the crowd is pushed back too
         m->kickX += dx / SDL_max(d, 1.0f) * SWORD_SHOVE;
         m->kickY += dy / SDL_max(d, 1.0f) * SWORD_SHOVE;
       }
     }
+  }
+  if (hits > 0) {
+    // the blow lands: a beat of stillness, the view pushed along it
+    jolt(c, 2, 0);
+    c->impact.kickX += SDL_cosf(angle) * 3;
+    c->impact.kickY += SDL_sinf(angle) * 3;
   }
   h->slashTimer = 12;
   h->slashLeft = SDL_cosf(angle) < 0;
@@ -1001,6 +1099,8 @@ static void explode(Combat *c, const Bomb *b) {
   if (c->numExplosions < MAX_EXPLOSIONS) {
     c->explosions[c->numExplosions++] = (Explosion){b->x, b->y, EXPLOSION_TICKS};
   }
+  add_mark(c, MARK_SCORCH, b->x, b->y, BOMB_RADIUS * 0.6f);
+  jolt(c, 4, 10);
   c->events |= EV_EXPLOSION;
 }
 
@@ -1024,6 +1124,7 @@ static void update_bombs(Combat *c) {
   }
   for (int i = c->numPuddles - 1; i >= 0; i--) {
     if (--c->puddles[i].life <= 0) {
+      add_mark(c, MARK_MOLASSES, c->puddles[i].x, c->puddles[i].y, c->puddles[i].radius);  // dried up
       c->puddles[i] = c->puddles[--c->numPuddles];
     }
   }
@@ -1103,19 +1204,36 @@ static void update_souls(Combat *c, float hx, float hy) {
   float pickup = combat_pickup_radius(c);
   for (int i = c->numSouls - 1; i >= 0; i--) {
     Soul *soul = &c->souls[i];
+    if (soul->z > 0 || soul->vz > 0) {
+      // still hopping out of the demon
+      soul->x += soul->vx;
+      soul->y += soul->vy;
+      soul->z += soul->vz;
+      soul->vz -= 0.45f;
+      if (soul->z <= 0) {
+        soul->z = 0;
+        soul->vz = soul->vz < -2 ? -soul->vz * 0.4f : 0;  // a little bounce
+        soul->vx *= 0.4f, soul->vy *= 0.4f;
+      }
+      continue;
+    }
     float dx = hx - soul->x, dy = hy - 12 - soul->y, d = SDL_sqrtf(dx * dx + dy * dy);
     if (d < 14) {
       if (soul->kind == SOUL_HEART) {
         heal_hero(c, HEART_HEAL);
+        combat_burst(c, PART_HEAL, 10, hx, hy, 16, 0, 0, 1.2f);
       } else {
         h->gold += soul->value;
         c->events |= EV_COIN;
+        combat_burst(c, PART_GOLD, 5, soul->x, soul->y + 4, 8, 0, 0, 1.5f);
       }
       c->souls[i] = c->souls[--c->numSouls];
-    } else if (d < pickup) {
-      float pull = SDL_min(d, 6.0f);
-      soul->x += dx / d * pull;
-      soul->y += dy / d * pull;
+    } else if (d < pickup || soul->pull > 0) {
+      // slow to start, then faster and faster: once it comes it doesn't stop
+      soul->pull = SDL_min(soul->pull + 0.5f, 14.0f);
+      float step = SDL_min(d, soul->pull);
+      soul->x += dx / d * step;
+      soul->y += dy / d * step;
     }
   }
   while (h->xp >= h->nextLevel) {
@@ -1192,9 +1310,18 @@ int combat_update(Combat *c, const World *world, Npcs *npcs, float hx, float hy)
       c->debris[i] = c->debris[--c->numDebris];
     }
   }
+  update_particles(c);
+  for (int i = c->numMarks - 1; i >= 0; i--) {
+    if (--c->marks[i].life <= 0) {
+      c->marks[i] = c->marks[--c->numMarks];
+    }
+  }
+  if (c->comboTimer > 0 && --c->comboTimer == 0) {
+    c->combo = 0;
+  }
   for (int i = c->numPopups - 1; i >= 0; i--) {
     Popup *p = &c->popups[i];
-    p->y -= 0.8f;
+    p->y -= SDL_max(0.2f, (float)(p->life - POPUP_TICKS / 2) * 0.12f);  // a jump, then drifting
     if (--p->life <= 0) {
       c->popups[i] = c->popups[--c->numPopups];
     }

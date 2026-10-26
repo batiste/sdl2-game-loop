@@ -85,6 +85,9 @@ typedef struct Hero {
   float xpCarry;  // fractions of experience from the wisdom amulets
 } Hero;
 
+#define HURT_TICKS 8          // Monster.hurtTimer after a hit
+#define HERO_INVULNERABLE 28  // Hero.invulnerable after a hit
+
 typedef struct Monster {
   MonsterKind kind;
   float x, y;  // feet
@@ -129,9 +132,50 @@ typedef enum SoulKind { SOUL_HEART, SOUL_GOLD } SoulKind;
 // something lying on the ground, picked up by walking near it
 typedef struct Soul {
   float x, y;
+  float z, vz;    // it hops out of the demon: height above the ground, and its speed up
+  float vx, vy;   // scattering while in the air
+  float pull;     // speed towards the hero, growing once he is in reach
   SoulKind kind;
   int value;  // gold
 } Soul;
+
+typedef enum ParticleKind {
+  PART_SPARK,  // white hot, off a blow
+  PART_ICHOR,  // the dark blood of the demons
+  PART_BLOOD,  // the hero's
+  PART_GOLD,   // glints of a coin picked up, or of a level
+  PART_HEAL,   // green, rising
+  PART_DUST,   // kicked up by the hero's feet
+} ParticleKind;
+
+// a speck flying off, falling and bouncing on the ground as it fades
+typedef struct Particle {
+  float x, y, z;  // z: height above the ground
+  float vx, vy, vz;
+  int life, maxLife;
+  ParticleKind kind;
+} Particle;
+
+typedef enum MarkKind { MARK_ICHOR, MARK_SCORCH, MARK_MOLASSES } MarkKind;
+
+// what the fight leaves on the ground, fading slowly
+typedef struct Mark {
+  float x, y, size;
+  MarkKind kind;
+  int life;
+  Uint32 seed;  // the shape of the splat
+} Mark;
+
+#define MARK_TICKS (25 * 50)
+#define MARK_FADE_TICKS (5 * 50)
+
+// How hard this tick hit, for the screen to show. The caller takes it and
+// clears it.
+typedef struct Impact {
+  int hitstop;         // ticks everything should hold still
+  float shake;         // pixels
+  float kickX, kickY;  // a push of the view, along the blow
+} Impact;
 
 // thrown towards (x, y): flies, lands, and goes off when the fuse is out,
 // or a jar of molasses that spills where it lands
@@ -192,9 +236,12 @@ typedef enum WaveState { WAVE_CALM, WAVE_ATTACK } WaveState;
 #define MAX_BOMBS 8
 #define MAX_EXPLOSIONS 8
 #define MAX_PUDDLES 12
+#define MAX_PARTICLES 768
+#define MAX_MARKS 160
 
 typedef struct Combat {
   Uint64 rng;
+  Uint64 fxRng;  // for the looks only, so they don't change the fight
   Hero hero;
 
   Monster *monsters;
@@ -215,6 +262,11 @@ typedef struct Combat {
   int numExplosions;
   Puddle puddles[MAX_PUDDLES];
   int numPuddles;
+  Particle particles[MAX_PARTICLES];
+  int numParticles;
+  Mark marks[MAX_MARKS];
+  int numMarks, nextMark;  // the oldest is written over when full
+  Impact impact;
 
   int wave;
   WaveState waveState;
@@ -236,6 +288,8 @@ typedef struct Combat {
   float viewW, viewH;
 
   int kills;
+  int combo;       // kills in quick succession
+  int comboTimer;  // ticks left to keep it going
   int villagersLost;
   int events;
   char message[128];
@@ -286,5 +340,10 @@ float combat_bomb_radius(void);
 
 // The repulsion spell pushes between sword slashes; 0 radius without it.
 float combat_repel_radius(const Combat *combat);
+
+// count particles from (x, y, z), flying along (dirX, dirY) or all around
+// when it is 0, at about speed pixels per tick.
+void combat_burst(Combat *combat, ParticleKind kind, int count, float x, float y, float z, float dirX, float dirY,
+                  float speed);
 
 #endif
