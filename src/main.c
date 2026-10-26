@@ -101,6 +101,9 @@ typedef enum MenuItem {
   MENU_VSYNC,
   MENU_MAP,
   MENU_LEVEL_UP,  // for testing
+  MENU_WAVE_10,   // for testing, the three side by side
+  MENU_WAVE_15,
+  MENU_WAVE_20,
   MENU_QUIT,
   MENU_COUNT,
 } MenuItem;
@@ -1252,7 +1255,9 @@ static void render_effects(Game *game, float px, float py, float camX, float cam
     if (m->hp >= m->maxHp || m->kind == MON_UNDERLING || m->kind == MON_BAT) {
       continue;
     }
-    float w = m->kind == MON_BOSS ? 60 : 24, top = m->kind == MON_BOSS ? 76 : 38;
+    const Sprite *sprite = &game->atlas.monsters[m->kind];
+    float scale = m->kind == MON_BOSS ? 2 : 1;
+    float w = m->kind == MON_BOSS ? 60 : 24, top = sprite->source.h * scale + 8;
     float x = lerp(m->prevX, m->x, t) - camX - w / 2, y = lerp(m->prevY, m->y, t) - camY - top;
     fill(renderer, x - 2, y - 2, w + 4, 6, (SDL_Color){34, 34, 34, 255});
     fill(renderer, x, y, SDL_max(2.0f, w * m->hp / m->maxHp), 2, (SDL_Color){220, 40, 40, 255});
@@ -2043,13 +2048,17 @@ static const char *menu_label(const Game *game, int item, char *buf, size_t size
     case MENU_VSYNC: SDL_snprintf(buf, size, "VSync: %s", game->engine.vsync ? "on" : "off"); return buf;
     case MENU_MAP: SDL_snprintf(buf, size, "Map: %s", game->showMap ? "shown" : "hidden"); return buf;
     case MENU_LEVEL_UP: return "Level up now";
+    case MENU_WAVE_10: return "Wave 10";
+    case MENU_WAVE_15: return "Wave 15";
+    case MENU_WAVE_20: return "Wave 20";
     case MENU_QUIT: return armed ? "Sure? Quit" : "Quit";
     case MENU_COUNT: break;
   }
   return "";
 }
 
-static const char *const MENU_KEYS[MENU_COUNT] = {"Esc", "", "N", "F", "C", "M", "L", ""};
+static const char *const MENU_KEYS[MENU_COUNT] = {"Esc", "", "N", "F", "C", "M", "L", "", "", "", ""};
+#define MENU_ROWS (MENU_COUNT - 2)  // the waves share a row
 
 #define MENU_WIDTH 300
 #define MENU_ITEM_HEIGHT 28
@@ -2063,7 +2072,7 @@ static void render_menu(Game *game, Uint64 now) {
 
   SDL_FPoint title = texture_size(game->menuTitle);
   float step = MENU_ITEM_HEIGHT + BUTTON_DEPTH + 6;
-  float w = MENU_WIDTH, h = 22 + title.y + 18 + step * (float)MENU_COUNT + 8 + 20 + 18;
+  float w = MENU_WIDTH, h = 22 + title.y + 18 + step * (float)MENU_ROWS + 8 + 20 + 18;
   float x = SDL_roundf(((float)game->engine.width - w) / 2);
   float y = SDL_roundf(((float)game->engine.height - h) / 2 + (1 - ease_out_back(time / 0.3f)) * 30);
   ButtonStyle panel = button_style((SDL_Color){246, 239, 158, 255});
@@ -2071,8 +2080,16 @@ static void render_menu(Game *game, Uint64 now) {
   draw_texture(renderer, game->menuTitle, face.x + (face.w - title.x) / 2, face.y + 20);
 
   float itemY = face.y + 22 + title.y + 18;
-  for (int i = 0; i < MENU_COUNT; i++, itemY += step) {
+  for (int i = 0; i < MENU_COUNT; i++) {
     SDL_FRect r = {face.x + 22, itemY, face.w - 44, MENU_ITEM_HEIGHT};
+    bool wave = i >= MENU_WAVE_10 && i <= MENU_WAVE_20;
+    if (wave) {
+      r.w = SDL_floorf((r.w - 12) / 3);
+      r.x += (float)(i - MENU_WAVE_10) * (r.w + 6);
+    }
+    if (!wave || i == MENU_WAVE_20) {
+      itemY += step;
+    }
     game->menuRects[i] = r;
     bool selected = i == game->menuSelected;
     ButtonState state = !selected ? BUTTON_IDLE
@@ -2283,6 +2300,16 @@ static SDL_AppResult activate_menu(Game *game, int item) {
         break;
       }
       free_level(game);
+      break;
+    case MENU_WAVE_10:
+    case MENU_WAVE_15:
+    case MENU_WAVE_20:
+      if (game->menuReturn != SCENE_PLAYING) {
+        play_sound(game->deniedTrack);
+        break;
+      }
+      combat_jump_to_wave(&game->combat, item == MENU_WAVE_10 ? 10 : item == MENU_WAVE_15 ? 15 : 20);
+      resume_play(game);
       break;
     case MENU_QUIT:
       if (game->menuArmed != item) {
@@ -2533,9 +2560,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     case SCENE_DYING:
       return SDL_APP_CONTINUE;
     case SCENE_MENU:
-      if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W) {
+      if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W || key == SDL_SCANCODE_LEFT || key == SDL_SCANCODE_A) {
         select_menu(game, (game->menuSelected + MENU_COUNT - 1) % MENU_COUNT);
-      } else if (key == SDL_SCANCODE_DOWN || key == SDL_SCANCODE_S) {
+      } else if (key == SDL_SCANCODE_DOWN || key == SDL_SCANCODE_S || key == SDL_SCANCODE_RIGHT || key == SDL_SCANCODE_D) {
         select_menu(game, (game->menuSelected + 1) % MENU_COUNT);
       } else if (enter) {
         return activate_menu(game, game->menuSelected);

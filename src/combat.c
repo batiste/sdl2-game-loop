@@ -24,10 +24,11 @@
 #define CALM_DELAY (35 * TICKS_PER_SECOND)
 
 // difficulty
-#define WAVE_BASE 12            // demons in a wave: WAVE_BASE + WAVE_GROWTH * wave
+#define WAVE_BASE 12            // demons in a wave: WAVE_BASE + WAVE_GROWTH * wave * ramp
 #define WAVE_GROWTH 10
+#define WAVE_RAMP 1.04f         // ramp = WAVE_RAMP^(wave - 1): growth compounds a little
 #define BOSS_EVERY 10           // waves
-#define WAVE_TOUGHNESS 0.2f     // extra health per wave
+#define WAVE_TOUGHNESS 0.2f     // extra health per wave, times the ramp
 #define LORDS_PER_WAVE 0.04f    // share of lords grows with each wave after the first...
 #define MAX_LORDS 0.25f         // ...up to this
 #define BATS_PER_WAVE 0.06f     // share of bats grows with each wave after the first...
@@ -84,6 +85,7 @@
 #define SURROUND_TURN 1.4f    // ...swinging up to this far round him (radians)...
 #define SURROUND_BOOST 1.35f  // ...with a burst of speed
 #define BITE_RANGE 34.0f      // close enough to go straight in
+#define BITE_REACH 10.0f      // a demon bites what is closer than this plus its radius
 
 typedef struct MonsterInfo {
   float hp, speed, damage;
@@ -159,6 +161,15 @@ void combat_next_wave(Combat *c) {
   }
 }
 
+void combat_jump_to_wave(Combat *c, int wave) {
+  c->numMonsters = c->numShots = c->numBombs = c->numPuddles = 0;
+  c->toSpawn = 0;
+  c->bossPending = c->bossAlive = false;
+  c->wave = wave - 1;
+  c->waveState = WAVE_CALM;
+  c->waveTimer = 1;
+}
+
 // ---------------------------------------------------------------- setup
 
 void combat_init(Combat *c, Uint64 seed) {
@@ -179,6 +190,15 @@ void combat_free(Combat *c) {
   c->field = NULL;
 }
 
+// Grows a few percent a wave, so later waves get harder faster.
+static float wave_ramp(int wave) {
+  return SDL_powf(WAVE_RAMP, (float)SDL_max(0, wave - 1));
+}
+
+static int wave_size(int wave) {
+  return WAVE_BASE + (int)(WAVE_GROWTH * (float)wave * wave_ramp(wave));
+}
+
 static Monster *add_monster(Combat *c, MonsterKind kind, float x, float y) {
   if (c->numMonsters >= MAX_MONSTERS) {
     return NULL;
@@ -195,7 +215,7 @@ static Monster *add_monster(Combat *c, MonsterKind kind, float x, float y) {
   Monster *m = &c->monsters[c->numMonsters++];
   // later waves are tougher, the evil lord only half as fast
   float toughness = WAVE_TOUGHNESS * (kind == MON_BOSS ? 0.5f : 1);
-  float hp = INFO[kind].hp * (1 + toughness * (float)SDL_max(0, c->wave - 1));
+  float hp = INFO[kind].hp * (1 + toughness * (float)SDL_max(0, c->wave - 1) * wave_ramp(c->wave));
   // each one has its own side to come from: half go left, half right
   float flank = (rndf(c) < 0.5f ? -1 : 1) * (0.35f + 0.65f * rndf(c));
   *m = (Monster){.kind = kind, .x = x, .y = y, .prevX = x, .prevY = y, .hp = hp, .maxHp = hp,
@@ -372,7 +392,7 @@ static void update_waves(Combat *c, const World *world, float heroX, float heroY
     c->wave++;
     c->waveState = WAVE_ATTACK;
     c->events |= EV_WAVE_STARTED;
-    c->toSpawn = WAVE_BASE + WAVE_GROWTH * c->wave;
+    c->toSpawn = wave_size(c->wave);
     c->spawnTimer = 0;
     c->bossPending = c->wave % BOSS_EVERY == 0;
     c->batWave = !c->bossPending && c->wave % BAT_WAVE_EVERY == BAT_WAVE_EVERY - 1;
@@ -413,7 +433,7 @@ static void update_waves(Combat *c, const World *world, float heroX, float heroY
     if (spawn_pack(c, world, pack, lord ? MON_LORD : bats ? MON_BAT : MON_UNDERLING)) {
       c->toSpawn -= pack;
     }
-    if (c->bossPending && c->toSpawn <= WAVE_GROWTH * c->wave / 2 && spawn_pack(c, world, 1, MON_BOSS)) {
+    if (c->bossPending && c->toSpawn <= (wave_size(c->wave) - WAVE_BASE) / 2 && spawn_pack(c, world, 1, MON_BOSS)) {
       c->bossPending = false;
       c->bossAlive = true;
     }
@@ -615,7 +635,7 @@ static void update_bat(Combat *c, const World *world, Npcs *npcs, int i, float h
   float maxX = (float)(world->width * TILE_SIZE), maxY = (float)(world->height * TILE_SIZE);
   m->x = SDL_clamp(m->x, 8.0f, maxX - 8);
   m->y = SDL_clamp(m->y, 8.0f, maxY - 8);
-  if (heroExposed && d < 16 + INFO[MON_BAT].radius && m->attackTimer == 0) {
+  if (heroExposed && d < BITE_REACH + INFO[MON_BAT].radius && m->attackTimer == 0) {
     attack(c, npcs, i);
     m->kickX -= dx / SDL_max(d, 1.0f) * 5;
     m->kickY -= dy / SDL_max(d, 1.0f) * 5;
@@ -742,7 +762,7 @@ static void update_monster(Combat *c, const World *world, Npcs *npcs, int i, flo
   if ((m->kind == MON_LORD || m->kind == MON_BOSS) && m->target == -1 && d < 320 && --m->shootTimer <= 0) {
     shoot(c, m, tx, ty);
   }
-  if (d < 20 + info->radius && m->attackTimer == 0) {
+  if (d < BITE_REACH + info->radius && m->attackTimer == 0) {
     attack(c, npcs, i);
   }
 }
@@ -1290,7 +1310,7 @@ const char *item_description(Item item) {
 int combat_item_price(const Combat *c, Item item) {
   switch (item) {
     case ITEM_POTION: return 15;
-    case ITEM_BOMB: return 20;
+    case ITEM_BOMB: return 8;
     // dearer each time
     case ITEM_AMULET: return 40 + 20 * c->hero.amulets;
     case ITEM_WISDOM: return 45 + 30 * c->hero.wisdom;

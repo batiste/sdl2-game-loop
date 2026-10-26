@@ -267,6 +267,8 @@ int combat_alive_monsters(const Combat *combat);
 
 // Skip the rest of the calm and start the next wave now.
 void combat_next_wave(Combat *combat);
+// For testing: clear the field and start this wave now.
+void combat_jump_to_wave(Combat *combat, int wave);
 
 // The shop. Items can't be bought past combat_item_max() of each.
 #define MAX_ITEMS 5

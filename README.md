@@ -125,7 +125,8 @@ Assets are copied next to the executable at build time and located with
 
 `assets/nature.png`, `assets/roofs.png` (gabled and thatched roofs) and
 `assets/furniture.png` are generated in the style of the original art by
-`tools/gen_nature_tiles.py` and `tools/gen_house_tiles.py`; edit the scripts
+`tools/gen_nature_tiles.py` and `tools/gen_house_tiles.py`, and the demons
+(`assets/devil*.png`) by `tools/gen_devils.py`; edit the scripts
 and re-run them with Pillow installed (`pip install pillow`) to tweak or add
 tiles. Tile ids for all
 tilesets are defined in `src/tiles.h`.

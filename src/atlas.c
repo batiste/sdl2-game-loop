@@ -287,19 +287,17 @@ static bool load_pig(Atlas *atlas, Engine *engine) {
   return ok;
 }
 
-// The devils (from the original web game) sit in the top-left corner of
-// their sheets; the skeleton is a tile of tiles.png.
+// The devils (see tools/gen_devils.py) fill their files; the skeleton is a
+// tile of tiles.png.
 static bool load_monsters(Atlas *atlas, Engine *engine) {
-  static const struct {
-    const char *file;
-    int w, h;
-  } DEVILS[] = {{"devil.png", 14, 28}, {"devil2.png", 16, 30}, {"devil3.png", 20, 34}};
+  static const char *DEVILS[] = {"devil.png", "devil2.png", "devil3.png"};
   for (int i = 0; i < 3; i++) {
-    SDL_Texture *texture = engine_load_texture(engine, DEVILS[i].file);
-    if (!texture) {
+    SDL_Texture *texture = engine_load_texture(engine, DEVILS[i]);
+    float w, h;
+    if (!texture || !SDL_GetTextureSize(texture, &w, &h)) {
       return false;
     }
-    atlas->monsters[i] = (Sprite){texture, {0, 0, (float)DEVILS[i].w, (float)DEVILS[i].h}};
+    atlas->monsters[i] = (Sprite){texture, {0, 0, w, h}};
   }
 
   SDL_Surface *tiles = engine_load_surface("tiles.png");
